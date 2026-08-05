@@ -1,5 +1,6 @@
 import type { MappedOffProduct } from "@/lib/openfoodfacts/mapping";
-import type { LookupResult, ProductSummary } from "./actions";
+import type { ProductSummary } from "@/lib/product-summary";
+import type { LookupResult } from "@/lib/lookup-result";
 
 export type ScanState =
   | { status: "idle" }

@@ -2,7 +2,8 @@
 
 import { useEffect, useState } from "react";
 import { formatChf } from "@/lib/pricing";
-import { searchProducts, type ProductSummary } from "./actions";
+import { searchProducts } from "./actions";
+import type { ProductSummary } from "@/lib/product-summary";
 
 interface SearchPaletteProps {
   onSelect: (product: ProductSummary) => void;

@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { initialScanState, scanReducer, type ScanState } from "./scan-reducer";
-import type { ProductSummary } from "./actions";
+import type { ProductSummary } from "@/lib/product-summary";
 
 const product: ProductSummary = {
   id: "p1",

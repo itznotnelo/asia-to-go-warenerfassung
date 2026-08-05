@@ -8,7 +8,10 @@ import { ManualEntry } from "./manual-entry";
 import { ExistingProductPanel } from "./existing-product-panel";
 import { ProductForm, mappedOffToFormValues } from "./product-form";
 import { SearchPalette } from "./search-palette";
-import { lookupBarcode, quickUpdateProduct, saveProduct, type CategoryOption, type ProductSummary, type SaveProductInput } from "./actions";
+import { lookupBarcode, quickUpdateProduct, saveProduct } from "./actions";
+import type { CategoryOption } from "@/lib/category-option";
+import type { ProductSummary } from "@/lib/product-summary";
+import type { ProductInput as SaveProductInput } from "@/lib/product-schema";
 
 const SAVE_CONFIRMATION_MS = 1100;
 

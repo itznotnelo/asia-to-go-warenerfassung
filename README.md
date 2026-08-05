@@ -23,7 +23,7 @@ npx prisma migrate dev
 pnpm dev
 ```
 
-Öffne [http://localhost:3000](http://localhost:3000).
+Öffne [http://localhost:3000](http://localhost:3000) — leitet direkt auf `/scan` weiter.
 
 `prisma migrate dev` führt `prisma/seed.ts` automatisch nach der ersten
 Migration aus (Kategorie-Baum + ein paar Beispielprodukte). Erneut seeden,
@@ -32,6 +32,26 @@ ohne zu migrieren:
 ```bash
 pnpm db:seed
 ```
+
+## Seiten
+
+- **`/scan`** — Hauptseite. Barcode scannen (USB-Handscanner oder manuelles
+  Eingabefeld) → Treffer in der eigenen DB zeigt die Schnellansicht
+  (Preis + Verfügbarkeit, unter 5 Sekunden erledigt), sonst Open-Food-Facts-
+  Lookup mit vorausgefülltem Formular oder leerem Formular bei Fehltreffer.
+  Tastatur: `Enter` speichern, `Esc` abbrechen, `Ctrl+D` letzten Artikel
+  duplizieren (Variante derselben Marke), `Ctrl+K` Artikel suchen.
+- **`/products`** — Artikelliste mit Suche, Filtern (Kategorie, Lagerung,
+  Quelle, Vollständigkeit), Inline-Bearbeitung von Preis/Verfügbarkeit und
+  Bulk-Aktionen. **`/products/[id]`** ist die volle Detailseite inkl. Löschen.
+- **`/dashboard`** — Fortschritt: erfasste Artikel, Anteil `dataComplete`,
+  OFF-Trefferquote aus dem `ScanLog`, Artikel pro Kategorie, Arbeitsvorrat der
+  unvollständigen Artikel. Von dort aus JSON-/CSV-Export aller Artikel
+  (`/api/export?format=json|csv`) für Backup und externe Weiterverarbeitung.
+
+Bildverwaltung (Upload, Drag-Reorder) und ein Änderungsverlauf auf der
+Detailseite sind noch nicht angebunden — deshalb bleibt `dataComplete`
+aktuell bei jedem Artikel `false`.
 
 ## Weitere Befehle
 

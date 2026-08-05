@@ -1,0 +1,142 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client"
+  output   = "../lib/generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+enum UnitType {
+  piece
+  weight
+  volume
+}
+
+enum ContentUnit {
+  g
+  kg
+  ml
+  l
+  stk
+}
+
+enum StorageType {
+  ambient
+  chilled
+  frozen
+}
+
+enum DataSource {
+  openfoodfacts
+  manual
+  ai_extracted
+}
+
+enum ImageType {
+  front
+  ingredients
+  nutrition
+  other
+}
+
+enum ScanResult {
+  existing_product
+  off_hit
+  off_miss
+}
+
+model Category {
+  id        String   @id @default(cuid())
+  name      String
+  slug      String   @unique
+  sortOrder Int      @default(0)
+  parentId  String?
+  parent    Category? @relation("CategoryToCategory", fields: [parentId], references: [id], onDelete: Restrict)
+  children  Category[] @relation("CategoryToCategory")
+  products  Product[]
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([parentId])
+}
+
+model Product {
+  id            String      @id @default(cuid())
+  ean           String?     @unique
+  sku           String      @unique
+  nameDe        String
+  nameOriginal  String?
+  nameEn        String?
+  brand         String?
+  originCountry String?
+  categoryId    String
+  category      Category    @relation(fields: [categoryId], references: [id], onDelete: Restrict)
+  priceRappen   Int
+  vatRate       Decimal     @default(2.6) @db.Decimal(3, 1)
+  unitType      UnitType
+  contentAmount Decimal?    @db.Decimal(10, 3)
+  contentUnit   ContentUnit?
+  storageType   StorageType
+  ingredientsDe String?
+  allergens     String[]    @default([])
+  nutrition     Json?
+  isAvailable   Boolean     @default(true)
+  stockQty      Int?
+  dataSource    DataSource
+  // Computed in application code (not a generated DB column) whenever a
+  // product is written — see lib/pricing.ts and the swiss-food-compliance
+  // skill for the required-field list. The shop must not display a product
+  // where this is false.
+  dataComplete  Boolean     @default(false)
+  notes         String?
+  images        ProductImage[]
+  scanLogs      ScanLog[]
+  createdAt     DateTime    @default(now())
+  updatedAt     DateTime    @updatedAt
+
+  @@index([categoryId])
+  @@index([nameOriginal])
+  @@index([isAvailable])
+  @@index([dataComplete])
+}
+
+model ProductImage {
+  id                String    @id @default(cuid())
+  productId         String
+  product           Product   @relation(fields: [productId], references: [id], onDelete: Cascade)
+  type              ImageType
+  path              String
+  width             Int
+  height            Int
+  sortOrder         Int       @default(0)
+  sourceAttribution String?
+  createdAt         DateTime  @default(now())
+
+  @@index([productId])
+}
+
+model ScanLog {
+  id        String     @id @default(cuid())
+  ean       String
+  result    ScanResult
+  productId String?
+  product   Product?   @relation(fields: [productId], references: [id], onDelete: SetNull)
+  createdAt DateTime   @default(now())
+
+  @@index([ean])
+  @@index([createdAt])
+}
+
+// Open Food Facts response cache — see .claude/skills/openfoodfacts/SKILL.md.
+// Negative results (found = false) are cached too, so a re-scan of a
+// not-found barcode doesn't hit OFF again within the TTL.
+model OffCache {
+  barcode   String   @id
+  rawJson   Json?
+  found     Boolean
+  fetchedAt DateTime @default(now())
+}

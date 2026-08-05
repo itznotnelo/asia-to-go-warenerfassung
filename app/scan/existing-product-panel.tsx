@@ -3,7 +3,8 @@
 import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import { formatChf } from "@/lib/pricing";
-import type { CategoryOption, ProductSummary } from "./actions";
+import type { CategoryOption } from "@/lib/category-option";
+import type { ProductSummary } from "@/lib/product-summary";
 
 interface ExistingProductPanelProps {
   product: ProductSummary;

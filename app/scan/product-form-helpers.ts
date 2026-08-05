@@ -1,6 +1,8 @@
 import type { MappedOffProduct } from "@/lib/openfoodfacts/mapping";
 import type { ContentUnit, StorageType, UnitType } from "@/lib/generated/prisma/client";
-import type { CategoryOption, SaveProductInput } from "./actions";
+import type { ProductSummary } from "@/lib/product-summary";
+import type { CategoryOption } from "@/lib/category-option";
+import type { ProductInput as SaveProductInput } from "@/lib/product-schema";
 
 export interface FormValues {
   nameDe: string;
@@ -60,6 +62,26 @@ export function mappedOffToFormValues(mapped: MappedOffProduct): { initial: Part
   }
 
   return { initial, sourced };
+}
+
+/** Für die Detailseite in /products/[id] — Kehrfunktion zum Speichern, ein bestehender Artikel als editierbares Formular. */
+export function productSummaryToFormValues(product: ProductSummary): FormValues {
+  return {
+    nameDe: product.nameDe,
+    nameOriginal: product.nameOriginal ?? "",
+    brand: product.brand ?? "",
+    originCountry: product.originCountry ?? "",
+    categoryId: product.categoryId,
+    priceChf: (product.priceRappen / 100).toFixed(2),
+    vatRate: product.vatRate,
+    unitType: product.unitType,
+    contentAmount: product.contentAmount !== null ? String(product.contentAmount) : "",
+    contentUnit: product.contentUnit ?? "",
+    storageType: product.storageType,
+    ingredientsDe: product.ingredientsDe ?? "",
+    allergens: product.allergens,
+    notes: product.notes ?? "",
+  };
 }
 
 // "Alkohol" und alles unter "Non-Food" sind die einzigen Kategorien mit dem erhöhten Satz, siehe swiss-food-compliance.

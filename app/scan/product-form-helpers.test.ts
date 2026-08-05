@@ -1,7 +1,9 @@
 import { describe, expect, it } from "vitest";
-import { duplicatedFieldsFromLastSaved, mappedOffToFormValues, suggestVatRate } from "./product-form-helpers";
+import { duplicatedFieldsFromLastSaved, mappedOffToFormValues, productSummaryToFormValues, suggestVatRate } from "./product-form-helpers";
 import type { MappedOffProduct } from "@/lib/openfoodfacts/mapping";
-import type { CategoryOption, SaveProductInput } from "./actions";
+import type { ProductSummary } from "@/lib/product-summary";
+import type { CategoryOption } from "@/lib/category-option";
+import type { ProductInput as SaveProductInput } from "@/lib/product-schema";
 
 const emptyMapped: MappedOffProduct = { allergens: [], traces: [], imageUrls: {} };
 
@@ -89,5 +91,49 @@ describe("duplicatedFieldsFromLastSaved", () => {
     const duplicated = duplicatedFieldsFromLastSaved(lastSaved);
     expect(duplicated).not.toHaveProperty("priceChf");
     expect(duplicated).not.toHaveProperty("contentAmount");
+  });
+});
+
+describe("productSummaryToFormValues", () => {
+  const product: ProductSummary = {
+    id: "p1",
+    sku: "ASIA-00001",
+    ean: "3017620422003",
+    nameDe: "Sojasauce",
+    nameOriginal: "生抽",
+    brand: "Lee Kum Kee",
+    originCountry: "CN",
+    categoryId: "cat-1",
+    priceRappen: 495,
+    vatRate: 2.6,
+    unitType: "weight",
+    contentAmount: 250,
+    contentUnit: "ml",
+    storageType: "ambient",
+    ingredientsDe: "Wasser, Sojabohnen, Salz",
+    allergens: ["soybeans"],
+    isAvailable: true,
+    dataSource: "manual",
+    dataComplete: false,
+    notes: null,
+  };
+
+  it("formats the price back into a CHF string for the controlled input", () => {
+    expect(productSummaryToFormValues(product).priceChf).toBe("4.95");
+  });
+
+  it("converts null fields to empty strings for controlled inputs", () => {
+    const values = productSummaryToFormValues({ ...product, nameOriginal: null, notes: null, contentAmount: null, contentUnit: null });
+    expect(values.nameOriginal).toBe("");
+    expect(values.notes).toBe("");
+    expect(values.contentAmount).toBe("");
+    expect(values.contentUnit).toBe("");
+  });
+
+  it("round-trips the editable fields", () => {
+    const values = productSummaryToFormValues(product);
+    expect(values.nameDe).toBe("Sojasauce");
+    expect(values.brand).toBe("Lee Kum Kee");
+    expect(values.allergens).toEqual(["soybeans"]);
   });
 });

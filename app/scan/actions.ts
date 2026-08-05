@@ -4,73 +4,16 @@ import { z } from "zod";
 import { prisma } from "@/lib/prisma";
 import { hasValidBarcodeFormat } from "@/lib/barcode";
 import { fetchOffProduct } from "@/lib/openfoodfacts/client";
-import { mapOffToProduct, type MappedOffProduct } from "@/lib/openfoodfacts/mapping";
-import type {
-  ContentUnit,
-  DataSource,
-  Prisma,
-  Product,
-  StorageType,
-  UnitType,
-} from "@/lib/generated/prisma/client";
+import { mapOffToProduct } from "@/lib/openfoodfacts/mapping";
+import { toProductSummary, type ProductSummary } from "@/lib/product-summary";
+import { computeDataComplete, productInputSchema } from "@/lib/product-schema";
+import type { CategoryOption } from "@/lib/category-option";
+import type { LookupResult } from "@/lib/lookup-result";
 
-export interface ProductSummary {
-  id: string;
-  sku: string;
-  ean: string | null;
-  nameDe: string;
-  nameOriginal: string | null;
-  brand: string | null;
-  originCountry: string | null;
-  categoryId: string;
-  priceRappen: number;
-  vatRate: number;
-  unitType: UnitType;
-  contentAmount: number | null;
-  contentUnit: ContentUnit | null;
-  storageType: StorageType;
-  ingredientsDe: string | null;
-  allergens: string[];
-  isAvailable: boolean;
-  dataSource: DataSource;
-  dataComplete: boolean;
-  notes: string | null;
-}
-
-function decimalToNumber(value: Prisma.Decimal | null): number | null {
-  return value === null ? null : value.toNumber();
-}
-
-function toProductSummary(product: Product): ProductSummary {
-  return {
-    id: product.id,
-    sku: product.sku,
-    ean: product.ean,
-    nameDe: product.nameDe,
-    nameOriginal: product.nameOriginal,
-    brand: product.brand,
-    originCountry: product.originCountry,
-    categoryId: product.categoryId,
-    priceRappen: product.priceRappen,
-    vatRate: decimalToNumber(product.vatRate) ?? 2.6,
-    unitType: product.unitType,
-    contentAmount: decimalToNumber(product.contentAmount),
-    contentUnit: product.contentUnit,
-    storageType: product.storageType,
-    ingredientsDe: product.ingredientsDe,
-    allergens: product.allergens,
-    isAvailable: product.isAvailable,
-    dataSource: product.dataSource,
-    dataComplete: product.dataComplete,
-    notes: product.notes,
-  };
-}
-
-export interface CategoryOption {
-  id: string;
-  name: string;
-  parentName: string | null;
-}
+// Next.js erlaubt in "use server"-Dateien ausschliesslich async-Function-Exports —
+// auch `export type` scheitert daran (siehe lib/category-option.ts,
+// lib/product-summary.ts, lib/lookup-result.ts, lib/product-schema.ts für die
+// eigentlichen Typdefinitionen; hier nur noch lokale, nicht exportierte Aliase).
 
 /** Nur Unterkategorien sind wählbar — die Top-Level-Einträge sind reine Gruppenüberschriften. */
 export async function getCategories(): Promise<CategoryOption[]> {
@@ -84,12 +27,6 @@ export async function getCategories(): Promise<CategoryOption[]> {
 async function logScan(ean: string, result: "existing_product" | "off_hit" | "off_miss", productId: string | null) {
   await prisma.scanLog.create({ data: { ean, result, productId } });
 }
-
-export type LookupResult =
-  | { kind: "existing"; product: ProductSummary }
-  | { kind: "off-hit"; ean: string; mapped: MappedOffProduct }
-  | { kind: "off-miss"; ean: string }
-  | { kind: "off-error"; ean: string };
 
 /**
  * Eigene DB zuerst, dann Open Food Facts. Jeder gültige Scan landet im
@@ -132,42 +69,12 @@ async function generateNextSku(): Promise<string> {
   return `ASIA-${String(next).padStart(5, "0")}`;
 }
 
-const saveProductInputSchema = z.object({
-  ean: z.string().trim().nullable(),
-  nameDe: z.string().trim().min(1, "Name ist Pflicht"),
-  nameOriginal: z.string().trim().optional(),
-  brand: z.string().trim().optional(),
-  originCountry: z.string().trim().length(2).optional(),
-  categoryId: z.string().min(1, "Kategorie ist Pflicht"),
-  priceRappen: z.number().int().positive("Preis muss positiv sein"),
-  vatRate: z.number(),
-  unitType: z.enum(["piece", "weight", "volume"]),
-  contentAmount: z.number().positive().optional(),
-  contentUnit: z.enum(["g", "kg", "ml", "l", "stk"]).optional(),
-  storageType: z.enum(["ambient", "chilled", "frozen"]),
-  ingredientsDe: z.string().trim().optional(),
-  allergens: z.array(z.string()).default([]),
-  notes: z.string().trim().optional(),
-  dataSource: z.enum(["openfoodfacts", "manual", "ai_extracted"]),
-});
-
-export type SaveProductInput = z.infer<typeof saveProductInputSchema>;
-
-// Pflichtfelder für den Shop-Auftritt, siehe .claude/skills/swiss-food-compliance/SKILL.md.
-// `hasImage` ist bewusst ein Parameter statt eines DB-Lookups — Phase 2 hat
-// noch keinen Bild-Upload, ein neu angelegter Artikel ist also nie komplett.
-function computeDataComplete(input: SaveProductInput, hasImage: boolean): boolean {
-  return Boolean(
-    input.nameDe && input.priceRappen > 0 && input.contentAmount && input.contentUnit && input.ingredientsDe && hasImage,
-  );
-}
-
-export type SaveProductResult =
+type SaveProductResult =
   | { ok: true; product: ProductSummary }
   | { ok: false; message: string; fieldErrors?: Record<string, string[] | undefined> };
 
 export async function saveProduct(rawInput: unknown): Promise<SaveProductResult> {
-  const parsed = saveProductInputSchema.safeParse(rawInput);
+  const parsed = productInputSchema.safeParse(rawInput);
   if (!parsed.success) {
     return { ok: false, message: "Bitte Eingaben prüfen.", fieldErrors: parsed.error.flatten().fieldErrors };
   }

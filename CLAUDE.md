@@ -1,4 +1,4 @@
-# CLAUDE.md — Asia Shop Schaffhausen
+# CLAUDE.md — Asia To Go
 
 Warenerfassung für einen Asia-Lebensmittelladen in Schaffhausen (CH).
 Die Datenbank dieser App wird später **unverändert** zum Webshop-Backend.

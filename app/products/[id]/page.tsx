@@ -3,10 +3,15 @@ import { prisma } from "@/lib/prisma";
 import { toProductSummary } from "@/lib/product-summary";
 import { getCategories } from "@/app/scan/actions";
 import { ProductEditForm } from "./product-edit-form";
+import { ProductImages } from "./product-images";
 
 export default async function ProductDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
-  const [product, categories] = await Promise.all([prisma.product.findUnique({ where: { id } }), getCategories()]);
+  const [product, categories, images] = await Promise.all([
+    prisma.product.findUnique({ where: { id } }),
+    getCategories(),
+    prisma.productImage.findMany({ where: { productId: id }, orderBy: { sortOrder: "asc" } }),
+  ]);
 
   if (!product) notFound();
 
@@ -18,10 +23,9 @@ export default async function ProductDetailPage({ params }: { params: Promise<{ 
           {product.dataComplete ? "vollständig" : "unvollständig"}
         </span>
       </div>
-      <p className="text-sm text-muted-foreground">
-        Bildverwaltung ist noch nicht angebunden — <code className="font-numeric">dataComplete</code> bleibt deshalb
-        false, bis das nachgezogen ist.
-      </p>
+
+      <ProductImages images={images} />
+
       <ProductEditForm product={toProductSummary(product)} categories={categories} />
     </div>
   );

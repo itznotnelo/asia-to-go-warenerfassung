@@ -7,7 +7,9 @@ import { ScanStatus } from "./scan-status";
 import { ManualEntry } from "./manual-entry";
 import { ExistingProductPanel } from "./existing-product-panel";
 import { ProductForm, mappedOffToFormValues } from "./product-form";
+import { QuickCaptureForm } from "./quick-capture-form";
 import { SearchPalette } from "./search-palette";
+import { cn } from "@/lib/utils";
 import { lookupBarcode, quickUpdateProduct, saveProduct } from "./actions";
 import type { CategoryOption } from "@/lib/category-option";
 import type { ProductSummary } from "@/lib/product-summary";
@@ -20,6 +22,7 @@ export function ScanWorkspace({ categories }: { categories: CategoryOption[] }) 
   const [saving, setSaving] = useState(false);
   const [lastSaved, setLastSaved] = useState<SaveProductInput | null>(null);
   const [searchOpen, setSearchOpen] = useState(false);
+  const [captureMode, setCaptureMode] = useState<"full" | "quick">("full");
 
   async function handleScan(result: ScanResult) {
     if (!result.valid) {
@@ -91,12 +94,43 @@ export function ScanWorkspace({ categories }: { categories: CategoryOption[] }) 
 
       <ManualEntry onSubmit={submitManualBarcode} />
 
+      <div className="flex items-center justify-center gap-1 self-center rounded-full border border-border p-1 text-sm">
+        <button
+          type="button"
+          onClick={() => setCaptureMode("full")}
+          className={cn("rounded-full px-3 py-1", captureMode === "full" ? "bg-primary text-primary-foreground" : "text-muted-foreground")}
+        >
+          Vollerfassung
+        </button>
+        <button
+          type="button"
+          onClick={() => setCaptureMode("quick")}
+          className={cn("rounded-full px-3 py-1", captureMode === "quick" ? "bg-primary text-primary-foreground" : "text-muted-foreground")}
+        >
+          Schnellerfassung
+        </button>
+      </div>
+
       {state.status === "existing" && (
         <ExistingProductPanel product={state.product} categories={categories} onSave={handleQuickUpdate} onCancel={reset} saving={saving} />
       )}
 
       {state.status === "new-hit" &&
         (() => {
+          if (captureMode === "quick") {
+            return (
+              <QuickCaptureForm
+                key={state.ean}
+                ean={state.ean}
+                categories={categories}
+                initialNameDe={state.mapped.nameDe}
+                dataSource="openfoodfacts"
+                onSave={handleSave}
+                onCancel={reset}
+                saving={saving}
+              />
+            );
+          }
           const { initial, sourced } = mappedOffToFormValues(state.mapped);
           return (
             <ProductForm
@@ -114,18 +148,29 @@ export function ScanWorkspace({ categories }: { categories: CategoryOption[] }) 
           );
         })()}
 
-      {(state.status === "new-miss" || state.status === "off-error") && (
-        <ProductForm
-          key={state.ean}
-          ean={state.ean}
-          categories={categories}
-          lastSaved={lastSaved ?? undefined}
-          dataSource="manual"
-          onSave={handleSave}
-          onCancel={reset}
-          saving={saving}
-        />
-      )}
+      {(state.status === "new-miss" || state.status === "off-error") &&
+        (captureMode === "quick" ? (
+          <QuickCaptureForm
+            key={state.ean}
+            ean={state.ean}
+            categories={categories}
+            dataSource="manual"
+            onSave={handleSave}
+            onCancel={reset}
+            saving={saving}
+          />
+        ) : (
+          <ProductForm
+            key={state.ean}
+            ean={state.ean}
+            categories={categories}
+            lastSaved={lastSaved ?? undefined}
+            dataSource="manual"
+            onSave={handleSave}
+            onCancel={reset}
+            saving={saving}
+          />
+        ))}
 
       <p className="text-center text-xs text-muted-foreground">Ctrl+K = Artikel suchen</p>
 

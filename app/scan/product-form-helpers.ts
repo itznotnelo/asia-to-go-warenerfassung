@@ -1,5 +1,5 @@
 import type { MappedOffProduct } from "@/lib/openfoodfacts/mapping";
-import type { ContentUnit, StorageType, UnitType } from "@/lib/generated/prisma/client";
+import type { ContentUnit, DataSource, StorageType, UnitType } from "@/lib/generated/prisma/client";
 import type { ProductSummary } from "@/lib/product-summary";
 import type { CategoryOption } from "@/lib/category-option";
 import type { ProductInput as SaveProductInput } from "@/lib/product-schema";
@@ -89,6 +89,33 @@ export function suggestVatRate(category: CategoryOption | undefined): number {
   if (!category) return 2.6;
   if (category.name === "Alkohol" || category.parentName === "Non-Food") return 8.1;
   return 2.6;
+}
+
+/**
+ * Zwei-Pass-Modus: nur Scan + Kategorie + Preis (die einzigen im Schema
+ * Pflichtfelder ausser den hier fest vorbelegten unitType/storageType).
+ * Speichert bewusst ohne contentAmount/contentUnit/ingredientsDe/allergens —
+ * der Artikel bleibt bis zur Nachbearbeitung im Arbeitsvorrat unvollständig.
+ */
+export function buildQuickCaptureInput(params: {
+  ean: string | null;
+  nameDe: string;
+  categoryId: string;
+  priceRappen: number;
+  category: CategoryOption | undefined;
+  dataSource: DataSource;
+}): SaveProductInput {
+  return {
+    ean: params.ean,
+    nameDe: params.nameDe,
+    categoryId: params.categoryId,
+    priceRappen: params.priceRappen,
+    vatRate: suggestVatRate(params.category),
+    unitType: "piece",
+    storageType: "ambient",
+    allergens: [],
+    dataSource: params.dataSource,
+  };
 }
 
 /**

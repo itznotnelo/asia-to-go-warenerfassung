@@ -1,5 +1,11 @@
 import { describe, expect, it } from "vitest";
-import { duplicatedFieldsFromLastSaved, mappedOffToFormValues, productSummaryToFormValues, suggestVatRate } from "./product-form-helpers";
+import {
+  buildQuickCaptureInput,
+  duplicatedFieldsFromLastSaved,
+  mappedOffToFormValues,
+  productSummaryToFormValues,
+  suggestVatRate,
+} from "./product-form-helpers";
 import type { MappedOffProduct } from "@/lib/openfoodfacts/mapping";
 import type { ProductSummary } from "@/lib/product-summary";
 import type { CategoryOption } from "@/lib/category-option";
@@ -135,5 +141,51 @@ describe("productSummaryToFormValues", () => {
     expect(values.nameDe).toBe("Sojasauce");
     expect(values.brand).toBe("Lee Kum Kee");
     expect(values.allergens).toEqual(["soybeans"]);
+  });
+});
+
+describe("buildQuickCaptureInput", () => {
+  const reis: CategoryOption = { id: "cat-reis", name: "Reis", parentName: "Nudeln & Reis" };
+  const alkohol: CategoryOption = { id: "cat-alk", name: "Alkohol", parentName: "Getränke" };
+
+  it("fills only the schema-required fields, defaulting unitType/storageType", () => {
+    const input = buildQuickCaptureInput({
+      ean: "3017620422003",
+      nameDe: "Testartikel",
+      categoryId: "cat-reis",
+      priceRappen: 500,
+      category: reis,
+      dataSource: "manual",
+    });
+    expect(input.unitType).toBe("piece");
+    expect(input.storageType).toBe("ambient");
+    expect(input.contentAmount).toBeUndefined();
+    expect(input.contentUnit).toBeUndefined();
+    expect(input.ingredientsDe).toBeUndefined();
+    expect(input.allergens).toEqual([]);
+  });
+
+  it("still auto-suggests the correct VAT rate from the category", () => {
+    const input = buildQuickCaptureInput({
+      ean: null,
+      nameDe: "Bier",
+      categoryId: "cat-alk",
+      priceRappen: 1000,
+      category: alkohol,
+      dataSource: "manual",
+    });
+    expect(input.vatRate).toBe(8.1);
+  });
+
+  it("defaults to 2.6% when the category lookup is unavailable", () => {
+    const input = buildQuickCaptureInput({
+      ean: null,
+      nameDe: "X",
+      categoryId: "cat-reis",
+      priceRappen: 100,
+      category: undefined,
+      dataSource: "manual",
+    });
+    expect(input.vatRate).toBe(2.6);
   });
 });

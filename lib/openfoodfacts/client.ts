@@ -3,7 +3,7 @@ import { prisma } from "@/lib/prisma";
 import { offResponseSchema, type OffProduct } from "./schema";
 
 const OFF_BASE_URL = "https://world.openfoodfacts.org/api/v2/product";
-const USER_AGENT = `AsiaShopSchaffhausen/1.0 (${process.env.OFF_CONTACT_EMAIL ?? "kontakt@nelo.ch"})`;
+const USER_AGENT = `AsiaToGo/1.0 (${process.env.OFF_CONTACT_EMAIL ?? "kontakt@nelo.ch"})`;
 const REQUEST_TIMEOUT_MS = 5_000;
 const CACHE_TTL_MS = 30 * 24 * 60 * 60 * 1000;
 

@@ -1,4 +1,4 @@
-# Build-Prompt: Warenerfassungs-App "Asia Shop Schaffhausen"
+# Build-Prompt: Warenerfassungs-App "Asia To Go"
 
 > Diesen Text komplett in Claude Code einfügen (erste Session, leeres Repo).
 > `CLAUDE.md` und `.claude/skills/` vorher ins Repo kopieren.

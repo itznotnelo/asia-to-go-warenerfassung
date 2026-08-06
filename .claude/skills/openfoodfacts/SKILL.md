@@ -32,7 +32,7 @@ traces_tags, nutriments, labels_tags, nova_group, ecoscore_grade`
 OFF verlangt einen aussagekräftigen `User-Agent`. Ohne ihn droht Blockierung:
 
 ```
-User-Agent: AsiaShopSchaffhausen/1.0 (kontakt@deine-domain.ch)
+User-Agent: AsiaToGo/1.0 (kontakt@deine-domain.ch)
 ```
 
 Rate Limit für Produktabrufe liegt im Bereich von etwa 100 Requests/Minute —

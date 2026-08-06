@@ -1,4 +1,4 @@
-# Asia Shop Schaffhausen
+# Asia To Go
 
 Warenerfassung für einen Asia-Lebensmittelladen in Schaffhausen. Details zu
 Stack, harten Regeln und Konventionen stehen in [`CLAUDE.md`](./CLAUDE.md).

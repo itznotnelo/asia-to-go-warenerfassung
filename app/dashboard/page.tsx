@@ -29,17 +29,7 @@ export default async function DashboardPage() {
 
   return (
     <div className="mx-auto flex w-full max-w-4xl flex-col gap-8 px-4 py-10">
-      <div className="flex items-center justify-between">
-        <h1 className="text-xl font-semibold">Fortschritt</h1>
-        <div className="flex gap-4 text-sm">
-          <Link href="/scan" className="text-primary hover:underline">
-            Erfassen
-          </Link>
-          <Link href="/products" className="text-primary hover:underline">
-            Artikel
-          </Link>
-        </div>
-      </div>
+      <h1 className="text-xl font-semibold">Fortschritt</h1>
 
       <div className="grid grid-cols-3 gap-4">
         <StatCard label="Artikel erfasst" value={String(totalCount)} />

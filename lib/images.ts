@@ -17,9 +17,36 @@ export interface StoredImage {
 }
 
 /**
- * Lädt ein Bild von einer URL, bringt es auf max. 1200px Kante als WebP q80
- * (plus 300px-Thumbnail daneben unter "{type}-thumb.webp"), speichert lokal
- * unter data/images/{sku}/ — nie hotlinken, siehe openfoodfacts SKILL.md.
+ * Bringt Bildbytes auf max. 1200px Kante als WebP q80 (plus 300px-Thumbnail
+ * daneben unter "{type}-thumb.webp"), speichert lokal unter data/images/{sku}/.
+ * Wirft bei Fehlern — die Aufrufer entscheiden, wie tolerant sie sein wollen.
+ */
+async function processAndStoreImageBuffer(buffer: Buffer, sku: string, type: string): Promise<StoredImage> {
+  const dir = path.join(IMAGE_ROOT, sku);
+  await mkdir(dir, { recursive: true });
+
+  const webpBuffer = await sharp(buffer)
+    .rotate()
+    .resize({ width: MAX_EDGE, height: MAX_EDGE, fit: "inside", withoutEnlargement: true })
+    .webp({ quality: WEBP_QUALITY })
+    .toBuffer();
+  const metadata = await sharp(webpBuffer).metadata();
+
+  const filename = `${type}.webp`;
+  await writeFile(path.join(dir, filename), webpBuffer);
+
+  const thumbBuffer = await sharp(buffer)
+    .rotate()
+    .resize({ width: THUMB_EDGE, height: THUMB_EDGE, fit: "inside", withoutEnlargement: true })
+    .webp({ quality: WEBP_QUALITY })
+    .toBuffer();
+  await writeFile(path.join(dir, `${type}-thumb.webp`), thumbBuffer);
+
+  return { path: `${sku}/${filename}`, width: metadata.width ?? 0, height: metadata.height ?? 0 };
+}
+
+/**
+ * Lädt ein Bild von einer URL — nie hotlinken, siehe openfoodfacts SKILL.md.
  * Tolerant: Timeout/Fehler geben null zurück statt zu werfen, ein fehlendes
  * Bild darf die Erfassung nie stoppen.
  */
@@ -34,32 +61,25 @@ export async function downloadAndStoreImage(url: string, sku: string, type: stri
       return null;
     }
     const buffer = Buffer.from(await response.arrayBuffer());
-
-    const dir = path.join(IMAGE_ROOT, sku);
-    await mkdir(dir, { recursive: true });
-
-    const webpBuffer = await sharp(buffer)
-      .rotate()
-      .resize({ width: MAX_EDGE, height: MAX_EDGE, fit: "inside", withoutEnlargement: true })
-      .webp({ quality: WEBP_QUALITY })
-      .toBuffer();
-    const metadata = await sharp(webpBuffer).metadata();
-
-    const filename = `${type}.webp`;
-    await writeFile(path.join(dir, filename), webpBuffer);
-
-    const thumbBuffer = await sharp(buffer)
-      .rotate()
-      .resize({ width: THUMB_EDGE, height: THUMB_EDGE, fit: "inside", withoutEnlargement: true })
-      .webp({ quality: WEBP_QUALITY })
-      .toBuffer();
-    await writeFile(path.join(dir, `${type}-thumb.webp`), thumbBuffer);
-
-    return { path: `${sku}/${filename}`, width: metadata.width ?? 0, height: metadata.height ?? 0 };
+    return await processAndStoreImageBuffer(buffer, sku, type);
   } catch (error) {
     console.error(`[images] Download fehlgeschlagen für ${type} (${sku}):`, error);
     return null;
   } finally {
     clearTimeout(timeout);
+  }
+}
+
+/**
+ * Verarbeitet ein manuell hochgeladenes Bild (eigenes Foto, kein Hotlink-
+ * Thema). Tolerant wie downloadAndStoreImage — ein kaputtes Bild darf den
+ * Rest der Erfassung nicht blockieren.
+ */
+export async function storeUploadedImage(buffer: Buffer, sku: string, type: string): Promise<StoredImage | null> {
+  try {
+    return await processAndStoreImageBuffer(buffer, sku, type);
+  } catch (error) {
+    console.error(`[images] Verarbeitung fehlgeschlagen für ${type} (${sku}):`, error);
+    return null;
   }
 }

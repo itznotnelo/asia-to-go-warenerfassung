@@ -19,7 +19,7 @@ interface ProductImageRow {
 
 export function ProductImages({ images }: { images: ProductImageRow[] }) {
   if (images.length === 0) {
-    return <p className="text-sm text-muted-foreground">Noch keine Bilder — manueller Upload ist noch nicht angebunden.</p>;
+    return <p className="text-sm text-muted-foreground">Noch keine Bilder.</p>;
   }
 
   return (

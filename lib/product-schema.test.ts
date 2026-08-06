@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { computeDataComplete, type ProductInput } from "./product-schema";
+import { computeDataComplete, isProductComplete, type ProductInput } from "./product-schema";
 
 const complete: ProductInput = {
   ean: "3017620422003",
@@ -36,5 +36,25 @@ describe("computeDataComplete", () => {
 
   it("is incomplete with a zero or negative price", () => {
     expect(computeDataComplete({ ...complete, priceRappen: 0 }, true)).toBe(false);
+  });
+});
+
+describe("isProductComplete", () => {
+  const savedProduct = {
+    nameDe: "Sojasauce",
+    priceRappen: 495,
+    contentAmount: 250,
+    contentUnit: "ml",
+    ingredientsDe: "Wasser, Sojabohnen, Salz",
+  };
+
+  it("applies the same rule as computeDataComplete, but to a saved product shape", () => {
+    expect(isProductComplete(savedProduct, true)).toBe(true);
+    expect(isProductComplete(savedProduct, false)).toBe(false);
+  });
+
+  it("treats null fields (as stored in the DB) the same as undefined", () => {
+    expect(isProductComplete({ ...savedProduct, ingredientsDe: null }, true)).toBe(false);
+    expect(isProductComplete({ ...savedProduct, contentAmount: null, contentUnit: null }, true)).toBe(false);
   });
 });

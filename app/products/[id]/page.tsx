@@ -4,6 +4,7 @@ import { toProductSummary } from "@/lib/product-summary";
 import { getCategories } from "@/app/scan/actions";
 import { ProductEditForm } from "./product-edit-form";
 import { ProductImages } from "./product-images";
+import { ImageUpload } from "./image-upload";
 
 export default async function ProductDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
@@ -25,6 +26,7 @@ export default async function ProductDetailPage({ params }: { params: Promise<{ 
       </div>
 
       <ProductImages images={images} />
+      <ImageUpload productId={product.id} />
 
       <ProductEditForm product={toProductSummary(product)} categories={categories} />
     </div>

@@ -4,7 +4,8 @@ import { z } from "zod";
 import { Prisma } from "@/lib/generated/prisma/client";
 import { prisma } from "@/lib/prisma";
 import { toProductSummary, type ProductSummary } from "@/lib/product-summary";
-import { computeDataComplete, productInputSchema } from "@/lib/product-schema";
+import { computeDataComplete, isProductComplete, productInputSchema } from "@/lib/product-schema";
+import { storeUploadedImage } from "@/lib/images";
 
 const updateProductSchema = productInputSchema.extend({ id: z.string().min(1) });
 
@@ -56,6 +57,66 @@ export async function updateProduct(rawInput: unknown): Promise<UpdateProductRes
     }
     throw error;
   }
+}
+
+const uploadImageSchema = z.object({
+  productId: z.string().min(1),
+  type: z.enum(["front", "ingredients", "nutrition", "other"]),
+});
+
+const MAX_UPLOAD_BYTES = 10 * 1024 * 1024;
+
+type UploadImageResult =
+  | { ok: true; path: string; dataComplete: boolean }
+  | { ok: false; message: string };
+
+/** Manueller Foto-Upload — der einzige Weg, wie ein OFF-Miss- oder Schnellerfassungs-Artikel je ein Bild bekommt. */
+export async function uploadProductImage(formData: FormData): Promise<UploadImageResult> {
+  const parsed = uploadImageSchema.safeParse({
+    productId: formData.get("productId"),
+    type: formData.get("type"),
+  });
+  if (!parsed.success) {
+    return { ok: false, message: "Ungültige Eingabe." };
+  }
+
+  const file = formData.get("file");
+  if (!(file instanceof File)) {
+    return { ok: false, message: "Keine Datei erhalten." };
+  }
+  if (!file.type.startsWith("image/")) {
+    return { ok: false, message: "Nur Bilddateien sind erlaubt." };
+  }
+  if (file.size > MAX_UPLOAD_BYTES) {
+    return { ok: false, message: "Datei zu gross (max. 10 MB)." };
+  }
+
+  const { productId, type } = parsed.data;
+  const product = await prisma.product.findUnique({ where: { id: productId } });
+  if (!product) {
+    return { ok: false, message: "Artikel nicht gefunden." };
+  }
+
+  const buffer = Buffer.from(await file.arrayBuffer());
+  const stored = await storeUploadedImage(buffer, product.sku, type);
+  if (!stored) {
+    return { ok: false, message: "Bild konnte nicht verarbeitet werden." };
+  }
+
+  await prisma.productImage.create({
+    data: { productId: product.id, type, path: stored.path, width: stored.width, height: stored.height },
+  });
+
+  let dataComplete = product.dataComplete;
+  if (!dataComplete) {
+    const summary = toProductSummary(product);
+    dataComplete = isProductComplete(summary, true);
+    if (dataComplete) {
+      await prisma.product.update({ where: { id: product.id }, data: { dataComplete: true } });
+    }
+  }
+
+  return { ok: true, path: stored.path, dataComplete };
 }
 
 const bulkUpdateSchema = z.object({

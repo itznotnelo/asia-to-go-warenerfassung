@@ -24,7 +24,7 @@ sharpChain.metadata.mockResolvedValue({ width: 800, height: 600 });
 
 vi.mock("sharp", () => ({ default: vi.fn(() => sharpChain) }));
 
-const { downloadAndStoreImage } = await import("./images");
+const { downloadAndStoreImage, storeUploadedImage } = await import("./images");
 
 function imageResponse(ok = true, status = ok ? 200 : 500) {
   return { ok, status, arrayBuffer: async () => new ArrayBuffer(8) } as Response;
@@ -66,5 +66,23 @@ describe("downloadAndStoreImage", () => {
     vi.stubGlobal("fetch", vi.fn().mockRejectedValue(new Error("network down")));
 
     await expect(downloadAndStoreImage("https://example.com/front.jpg", "ASIA-00001", "front")).resolves.toBeNull();
+  });
+});
+
+describe("storeUploadedImage", () => {
+  it("resizes and stores an uploaded buffer plus a thumbnail, returning path and dimensions", async () => {
+    const result = await storeUploadedImage(Buffer.from("raw-upload-bytes"), "ASIA-00002", "other");
+
+    expect(result).toEqual({ path: "ASIA-00002/other.webp", width: 800, height: 600 });
+    expect(mkdirMock).toHaveBeenCalledWith(expect.stringContaining("ASIA-00002"), { recursive: true });
+    expect(writeFileMock).toHaveBeenCalledTimes(2);
+    expect(writeFileMock.mock.calls[0][0]).toContain("other.webp");
+    expect(writeFileMock.mock.calls[1][0]).toContain("other-thumb.webp");
+  });
+
+  it("returns null instead of throwing when processing fails", async () => {
+    writeFileMock.mockReset().mockRejectedValue(new Error("disk full"));
+
+    await expect(storeUploadedImage(Buffer.from("x"), "ASIA-00002", "front")).resolves.toBeNull();
   });
 });

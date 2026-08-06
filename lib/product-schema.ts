@@ -21,11 +21,29 @@ export const productInputSchema = z.object({
 
 export type ProductInput = z.infer<typeof productInputSchema>;
 
+interface CompletionFields {
+  nameDe: string;
+  priceRappen: number;
+  contentAmount?: number | null;
+  contentUnit?: string | null;
+  ingredientsDe?: string | null;
+}
+
+function hasRequiredCompletionFields(fields: CompletionFields): boolean {
+  return Boolean(fields.nameDe && fields.priceRappen > 0 && fields.contentAmount && fields.contentUnit && fields.ingredientsDe);
+}
+
 // Pflichtfelder für den Shop-Auftritt, siehe .claude/skills/swiss-food-compliance/SKILL.md.
 // `hasImage` kommt vom Aufrufer statt aus einem DB-Lookup hier drin, damit
 // diese Funktion rein bleibt und ohne Datenbank testbar ist.
 export function computeDataComplete(input: ProductInput, hasImage: boolean): boolean {
-  return Boolean(
-    input.nameDe && input.priceRappen > 0 && input.contentAmount && input.contentUnit && input.ingredientsDe && hasImage,
-  );
+  return hasRequiredCompletionFields(input) && hasImage;
+}
+
+/**
+ * Dieselbe Regel, aber für einen bereits gespeicherten Artikel (z.B. nach
+ * einem nachträglichen Bild-Upload) statt für frisches Formular-Input.
+ */
+export function isProductComplete(product: CompletionFields, hasImage: boolean): boolean {
+  return hasRequiredCompletionFields(product) && hasImage;
 }

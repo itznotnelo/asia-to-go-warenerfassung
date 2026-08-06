@@ -71,7 +71,10 @@ export function ScanWorkspace({ categories }: { categories: CategoryOption[] }) 
 
   async function handleSave(input: SaveProductInput) {
     setSaving(true);
-    const result = await saveProduct(input);
+    // OFF-Bilder gleich mitschicken, wenn der aktuelle Scan von einem
+    // OFF-Treffer kommt — spart den separaten Upload-Schritt für diesen Fall.
+    const offImageUrls = state.status === "new-hit" ? state.mapped.imageUrls : undefined;
+    const result = await saveProduct(input, offImageUrls);
     setSaving(false);
     if (result.ok) {
       setLastSaved(input);

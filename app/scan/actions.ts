@@ -7,6 +7,7 @@ import { fetchOffProduct } from "@/lib/openfoodfacts/client";
 import { mapOffToProduct } from "@/lib/openfoodfacts/mapping";
 import { toProductSummary, type ProductSummary } from "@/lib/product-summary";
 import { computeDataComplete, productInputSchema } from "@/lib/product-schema";
+import { attachOffImages, type OffImageUrls } from "@/lib/off-images";
 import type { CategoryOption } from "@/lib/category-option";
 import type { LookupResult } from "@/lib/lookup-result";
 
@@ -73,7 +74,7 @@ type SaveProductResult =
   | { ok: true; product: ProductSummary }
   | { ok: false; message: string; fieldErrors?: Record<string, string[] | undefined> };
 
-export async function saveProduct(rawInput: unknown): Promise<SaveProductResult> {
+export async function saveProduct(rawInput: unknown, offImageUrls?: OffImageUrls): Promise<SaveProductResult> {
   const parsed = productInputSchema.safeParse(rawInput);
   if (!parsed.success) {
     return { ok: false, message: "Bitte Eingaben prüfen.", fieldErrors: parsed.error.flatten().fieldErrors };
@@ -83,7 +84,7 @@ export async function saveProduct(rawInput: unknown): Promise<SaveProductResult>
   const sku = await generateNextSku();
   const dataComplete = computeDataComplete(input, false);
 
-  const product = await prisma.product.create({
+  let product = await prisma.product.create({
     data: {
       ean: input.ean || null,
       sku,
@@ -105,6 +106,19 @@ export async function saveProduct(rawInput: unknown): Promise<SaveProductResult>
       dataComplete,
     },
   });
+
+  // Best effort: OFF-Bilder herunterladen, wenn welche mitkamen. Ein
+  // Download-Fehler darf den bereits erfolgreichen Save nicht rückgängig
+  // machen — deshalb erst nach dem create(), separat vom Haupt-Flow.
+  if (offImageUrls?.front || offImageUrls?.ingredients || offImageUrls?.nutrition) {
+    const attached = await attachOffImages(product.id, sku, offImageUrls);
+    if (attached > 0) {
+      product = await prisma.product.update({
+        where: { id: product.id },
+        data: { dataComplete: computeDataComplete(input, true) },
+      });
+    }
+  }
 
   return { ok: true, product: toProductSummary(product) };
 }

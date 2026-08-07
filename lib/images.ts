@@ -3,7 +3,7 @@ import { mkdir, writeFile } from "node:fs/promises";
 import path from "node:path";
 import sharp from "sharp";
 
-const IMAGE_ROOT = path.join(process.cwd(), "data", "images");
+const IMAGE_ROOT = process.env.IMAGE_ROOT ?? path.join(process.cwd(), "data", "images");
 const MAX_EDGE = 1200;
 const THUMB_EDGE = 300;
 const WEBP_QUALITY = 80;

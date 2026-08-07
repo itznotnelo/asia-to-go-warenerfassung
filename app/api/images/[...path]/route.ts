@@ -2,7 +2,7 @@ import { readFile } from "node:fs/promises";
 import path from "node:path";
 import { isPathWithinRoot } from "@/lib/safe-path";
 
-const IMAGE_ROOT = path.join(process.cwd(), "data", "images");
+const IMAGE_ROOT = process.env.IMAGE_ROOT ?? path.join(process.cwd(), "data", "images");
 
 /** Liefert lokal gespeicherte Produktbilder aus — data/images/ liegt bewusst ausserhalb von public/, siehe CLAUDE.md. */
 export async function GET(_request: Request, { params }: { params: Promise<{ path: string[] }> }) {

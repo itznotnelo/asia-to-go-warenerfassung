@@ -27,7 +27,7 @@ async function waitForReady(url: string, timeoutMs: number): Promise<void> {
 // HOSTNAME=127.0.0.1 (loopback only) avoids an unnecessary Windows Firewall
 // prompt for what's a single-user local app — this never needs to be
 // reachable from other machines.
-export async function startNextServer(databaseUrl: string): Promise<RunningServer> {
+export async function startNextServer(databaseUrl: string, offContactEmail: string): Promise<RunningServer> {
   const port = await findFreePort();
   const cwd = standaloneDir();
   const serverEntry = path.join(cwd, "server.js");
@@ -40,6 +40,7 @@ export async function startNextServer(databaseUrl: string): Promise<RunningServe
       HOSTNAME: "127.0.0.1",
       DATABASE_URL: databaseUrl,
       IMAGE_ROOT: imageDir(),
+      OFF_CONTACT_EMAIL: offContactEmail,
       NODE_ENV: "production",
     },
     silent: true,

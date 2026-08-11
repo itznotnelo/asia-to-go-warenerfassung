@@ -1,0 +1,91 @@
+<!doctype html>
+<html lang="de-CH">
+  <head>
+    <meta charset="utf-8" />
+    <title>Asia To Go — Einrichtung</title>
+    <style>
+      body {
+        margin: 0;
+        display: flex;
+        flex-direction: column;
+        justify-content: center;
+        height: 100vh;
+        background: #1c1a17;
+        color: #f2ede4;
+        font-family:
+          -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+        padding: 0 2rem;
+        box-sizing: border-box;
+      }
+      h1 {
+        font-size: 1.05rem;
+        font-weight: 600;
+        margin: 0 0 0.5rem;
+      }
+      p {
+        margin: 0 0 1.25rem;
+        font-size: 0.82rem;
+        color: #b5aa9a;
+        line-height: 1.4;
+      }
+      input {
+        width: 100%;
+        box-sizing: border-box;
+        padding: 0.6rem 0.7rem;
+        border-radius: 6px;
+        border: 1px solid #3a352e;
+        background: #262320;
+        color: #f2ede4;
+        font-size: 0.9rem;
+        margin-bottom: 1rem;
+      }
+      input:focus {
+        outline: none;
+        border-color: #e08a3e;
+      }
+      button {
+        width: 100%;
+        padding: 0.65rem;
+        border-radius: 6px;
+        border: none;
+        background: #e08a3e;
+        color: #1c1a17;
+        font-weight: 600;
+        font-size: 0.9rem;
+        cursor: pointer;
+      }
+      button:disabled {
+        opacity: 0.5;
+        cursor: default;
+      }
+    </style>
+  </head>
+  <body>
+    <h1>Kurze Einrichtung</h1>
+    <p>
+      Open Food Facts verlangt eine echte Kontaktadresse pro Installation.
+      Diese wird nur an Open Food Facts gesendet, nirgendwo sonst
+      gespeichert oder geteilt.
+    </p>
+    <form id="form">
+      <input
+        id="email"
+        type="email"
+        required
+        placeholder="deine-adresse@beispiel.ch"
+        autofocus
+      />
+      <button type="submit">Starten</button>
+    </form>
+    <script>
+      const form = document.getElementById("form");
+      const emailInput = document.getElementById("email");
+      form.addEventListener("submit", (event) => {
+        event.preventDefault();
+        const button = form.querySelector("button");
+        button.disabled = true;
+        window.setupApi.submit(emailInput.value.trim());
+      });
+    </script>
+  </body>
+</html>

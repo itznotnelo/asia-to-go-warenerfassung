@@ -1,10 +1,11 @@
-import { app, BrowserWindow } from "electron";
+import { app, BrowserWindow, ipcMain } from "electron";
 import path from "node:path";
 import log from "electron-log";
 import { startEmbeddedPostgres, RunningPostgres } from "./postgres";
 import { runMigrations } from "./migrate";
 import { seedCategoriesIfEmpty } from "./seed-categories";
 import { startNextServer, RunningServer } from "./server";
+import { loadConfig, saveConfig } from "./config";
 
 let mainWindow: BrowserWindow | null = null;
 let runningPostgres: RunningPostgres | null = null;
@@ -21,6 +22,30 @@ function createSplashWindow(): BrowserWindow {
   });
   win.loadFile(path.join(__dirname, "splash.html"));
   return win;
+}
+
+// Open Food Facts requires a real, reachable contact address per install
+// (their abuse-contact policy) — there's no safe generic default, since
+// every download of this app would otherwise send the same address. Shown
+// once on first run; the answer is saved to userData/config.json.
+function promptForOffContactEmail(): Promise<string> {
+  return new Promise((resolve) => {
+    const win = new BrowserWindow({
+      width: 480,
+      height: 340,
+      frame: false,
+      resizable: false,
+      title: "Asia To Go — Einrichtung",
+      autoHideMenuBar: true,
+      webPreferences: { preload: path.join(__dirname, "preload.js") },
+    });
+    win.loadFile(path.join(__dirname, "setup-prompt.html"));
+
+    ipcMain.handleOnce("setup:submit", (_event, email: string) => {
+      win.close();
+      resolve(email);
+    });
+  });
 }
 
 function showFatalError(err: unknown): void {
@@ -56,13 +81,19 @@ async function bootDevMode(): Promise<void> {
 }
 
 async function bootFullPipeline(): Promise<void> {
+  const config = loadConfig();
+  if (!config.offContactEmail) {
+    config.offContactEmail = await promptForOffContactEmail();
+    saveConfig(config);
+  }
+
   const splash = createSplashWindow();
 
   try {
     runningPostgres = await startEmbeddedPostgres();
     await runMigrations(runningPostgres.databaseUrl);
     await seedCategoriesIfEmpty(runningPostgres.databaseUrl);
-    runningServer = await startNextServer(runningPostgres.databaseUrl);
+    runningServer = await startNextServer(runningPostgres.databaseUrl, config.offContactEmail);
 
     mainWindow = new BrowserWindow({
       width: 1280,

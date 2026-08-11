@@ -1,7 +1,7 @@
 allowBuilds:
   '@prisma/engines': true
   electron-winstaller: false
-  esbuild: set this to true or false
+  esbuild: true
   prisma: true
   sharp: false
   unrs-resolver: false

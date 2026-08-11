@@ -3,8 +3,22 @@ import { prisma } from "@/lib/prisma";
 import { offResponseSchema, type OffProduct } from "./schema";
 
 const OFF_BASE_URL = "https://world.openfoodfacts.org/api/v2/product";
-const USER_AGENT = `AsiaToGo/1.0 (${process.env.OFF_CONTACT_EMAIL ?? "kontakt@nelo.ch"})`;
 const REQUEST_TIMEOUT_MS = 5_000;
+
+// OFF requires a real, reachable contact per installation in the User-Agent
+// (their abuse-contact policy) — no safe generic default exists, since every
+// downloaded install of this app would otherwise send the same address.
+// Fails lazily (not at module load) so `next build` isn't affected by a
+// missing env var that only matters once someone actually scans a barcode.
+function offUserAgent(): string {
+  const contact = process.env.OFF_CONTACT_EMAIL;
+  if (!contact) {
+    throw new Error(
+      "OFF_CONTACT_EMAIL ist nicht gesetzt. Open Food Facts verlangt eine echte Kontaktadresse im User-Agent — bitte in .env eintragen.",
+    );
+  }
+  return `AsiaToGo/1.0 (${contact})`;
+}
 const CACHE_TTL_MS = 30 * 24 * 60 * 60 * 1000;
 
 const FIELDS = [
@@ -43,7 +57,7 @@ async function fetchFromOff(barcode: string): Promise<FetchOutcome> {
 
   try {
     const response = await fetch(url, {
-      headers: { "User-Agent": USER_AGENT },
+      headers: { "User-Agent": offUserAgent() },
       signal: controller.signal,
     });
     // OFF meldet unbekannte Barcodes inkonsistent: mal HTTP 200 mit leerem

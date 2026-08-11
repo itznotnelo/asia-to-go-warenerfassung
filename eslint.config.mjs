@@ -12,7 +12,23 @@ const compat = new FlatCompat({
 const eslintConfig = [
   ...compat.extends("next/core-web-vitals", "next/typescript"),
   {
-    ignores: [".next/**", "out/**", "build/**", "next-env.d.ts"],
+    ignores: [
+      ".next/**",
+      "out/**",
+      "build/**",
+      "next-env.d.ts",
+      "electron/app/**",
+      "electron/release/**",
+      "electron/resources/**",
+    ],
+  },
+  {
+    // Plain Node scripts run standalone outside the Next/TS toolchain
+    // (postbuild steps, CI helpers) — CommonJS require() is intentional.
+    files: ["scripts/**/*.cjs", "electron-builder.config.js"],
+    rules: {
+      "@typescript-eslint/no-require-imports": "off",
+    },
   },
 ];
 

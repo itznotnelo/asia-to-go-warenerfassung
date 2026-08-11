@@ -45,3 +45,14 @@ yarn-error.log*
 next-env.d.ts
 
 /lib/generated/prisma
+
+# electron
+# electron/app/package.json is hand-written and tracked; everything else in
+# that folder is tsc/copy output (compiled main.js, extraResources, its own
+# node_modules if runtime deps get added later).
+/electron/app/*.js
+/electron/app/*.js.map
+/electron/app/*.html
+/electron/app/node_modules
+/electron/release/
+/electron/resources/prisma-engines/

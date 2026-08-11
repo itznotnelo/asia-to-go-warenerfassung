@@ -1,0 +1,20 @@
+{
+  "compilerOptions": {
+    "target": "ES2022",
+    "lib": ["ES2022"],
+    "module": "CommonJS",
+    "moduleResolution": "Node",
+    "outDir": "./app",
+    "rootDir": "./src",
+    "strict": true,
+    "skipLibCheck": true,
+    "esModuleInterop": true,
+    "forceConsistentCasingInFileNames": true,
+    "baseUrl": ".",
+    "paths": {
+      "embedded-postgres": ["./app/node_modules/embedded-postgres/dist/index"],
+      "electron-log": ["./app/node_modules/electron-log"]
+    }
+  },
+  "include": ["src/**/*.ts"]
+}

@@ -3,6 +3,10 @@ import { prisma } from "@/lib/prisma";
 import { getCategories } from "@/app/scan/actions";
 import { buildCategoryCounts, computeOffHitRate } from "./stats";
 
+// Zeigt live Fortschritt aus der DB — darf nie zur Build-Zeit eingefroren
+// werden (und die Build-Umgebung hat ohnehin keine DB-Verbindung).
+export const dynamic = "force-dynamic";
+
 export default async function DashboardPage() {
   const [totalCount, completeCount, scanLogGroups, categoryGroups, categories, incompleteProducts] = await Promise.all([
     prisma.product.count(),

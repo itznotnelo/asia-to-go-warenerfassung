@@ -1,3 +1,11 @@
+# Next's standalone output tracer (@vercel/nft) only reliably resolves
+# packages hoisted to a root node_modules symlink — under pnpm's default
+# strict isolation, transitive dependencies buried in the .pnpm store keep
+# silently dropping out of the standalone bundle one at a time (styled-jsx,
+# @swc/helpers, react-dom, @prisma/client, their own transitive deps, ...).
+# Hoisting everything eliminates that whole class of bugs at once.
+shamefullyHoist: true
+
 allowBuilds:
   '@prisma/engines': true
   electron-winstaller: false

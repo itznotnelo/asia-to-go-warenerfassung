@@ -14,9 +14,11 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      # pnpm 11.20.0 (pinned via packageManager) requires Node 22.13+ — its
+      # own CLI uses node:sqlite internally, which doesn't exist on Node 20.
       - uses: actions/setup-node@v4
         with:
-          node-version: 20
+          node-version: 22
 
       - name: Enable corepack (pnpm)
         run: corepack enable

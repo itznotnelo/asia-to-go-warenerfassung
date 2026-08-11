@@ -1,0 +1,49 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: write
+
+jobs:
+  build-windows:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Enable corepack (pnpm)
+        run: corepack enable
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Build Next.js standalone output
+        run: pnpm build
+
+      - name: Compile Electron main process
+        run: pnpm run electron:build-src
+
+      - name: Install electron/app's own dependencies
+        working-directory: electron/app
+        run: npm ci
+
+      # Runs a real `prisma migrate deploy` against a throwaway embedded
+      # Postgres instance to force-download Prisma's schema-engine binary and
+      # bundle it into electron/resources/prisma-engines/ — without this, the
+      # packaged app would need internet access on a fresh end-user machine
+      # just to run its first migration. Also doubles as a migration smoke
+      # test: a broken migration fails the release build here.
+      - name: Prefetch and bundle Prisma schema-engine binary
+        run: node scripts/ci-prefetch-prisma-engine.cjs
+
+      - name: Build and publish installer
+        run: node_modules/.bin/electron-builder --config electron-builder.config.js --win nsis --publish always
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}

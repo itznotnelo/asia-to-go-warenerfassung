@@ -10,6 +10,8 @@ vi.mock("@/lib/prisma", () => ({
 }));
 vi.mock("server-only", () => ({}));
 
+process.env.OFF_CONTACT_EMAIL = "test@example.ch";
+
 const { fetchOffProduct } = await import("./client");
 
 function jsonResponse(body: unknown, ok = true, status = ok ? 200 : 500) {

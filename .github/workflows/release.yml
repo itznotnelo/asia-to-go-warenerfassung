@@ -29,12 +29,15 @@ jobs:
       - name: Build Next.js standalone output
         run: pnpm build
 
-      - name: Compile Electron main process
-        run: pnpm run electron:build-src
-
+      # Must run before compiling — electron/tsconfig.json path-maps
+      # embedded-postgres/electron-log's types to electron/app/node_modules,
+      # so tsc fails to resolve them if this hasn't installed yet.
       - name: Install electron/app's own dependencies
         working-directory: electron/app
         run: npm ci
+
+      - name: Compile Electron main process
+        run: pnpm run electron:build-src
 
       # Runs a real `prisma migrate deploy` against a throwaway embedded
       # Postgres instance to force-download Prisma's schema-engine binary and

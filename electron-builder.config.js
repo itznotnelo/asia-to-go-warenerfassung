@@ -10,6 +10,11 @@ module.exports = {
     output: "electron/release",
   },
   asar: false,
+  compression: "maximum",
+  // Electron bundles ~55 Chromium UI locale files (spellcheck, context
+  // menus, etc.) by default — the app itself is German-only, so keep just
+  // German plus an English fallback rather than shipping all of them.
+  electronLanguages: ["de", "en-US"],
   extraResources: [
     {
       from: "prisma",

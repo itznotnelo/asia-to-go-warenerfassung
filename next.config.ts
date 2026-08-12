@@ -46,6 +46,13 @@ const nextConfig: NextConfig = {
       "./node_modules/@img/colour/**",
     ],
   },
+  // typescript ends up naturally traced into the standalone bundle (likely
+  // referenced by one of Next's own internal config-loading code paths) even
+  // though the production server never compiles TS at runtime — 8.7 MB of
+  // dead weight otherwise.
+  outputFileTracingExcludes: {
+    "/**": ["./node_modules/typescript/**"],
+  },
 };
 
 export default nextConfig;

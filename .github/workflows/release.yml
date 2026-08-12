@@ -36,6 +36,16 @@ jobs:
         working-directory: electron/app
         run: npm ci
 
+      # `prisma`'s own package pulls in MySQL/postgres.js drivers that
+      # migrate deploy never touches (it talks to Postgres through the
+      # native schema-engine binary, not a JS driver). Does NOT remove
+      # @prisma/studio-core or @prisma/dev — both are required even for
+      # non-studio/non-dev commands when running under Electron's Node
+      # binary, see scripts/trim-electron-app-bloat.cjs for how that was
+      # confirmed (both were tried and broke migrate deploy).
+      - name: Trim unused Prisma driver bloat
+        run: node scripts/trim-electron-app-bloat.cjs
+
       - name: Compile Electron main process
         run: pnpm run electron:build-src
 

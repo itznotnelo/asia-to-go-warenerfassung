@@ -46,6 +46,7 @@ module.exports = {
   },
   win: {
     target: "nsis",
+    icon: "build/icon.ico",
   },
   nsis: {
     oneClick: false,

@@ -13,7 +13,8 @@
     "db:seed": "tsx prisma/seed.ts",
     "electron:build-src": "tsc -p electron/tsconfig.json && node scripts/copy-electron-assets.cjs",
     "electron:trim-deps": "node scripts/trim-electron-app-bloat.cjs",
-    "electron:dev": "pnpm run electron:build-src && electron electron/app/main.js"
+    "electron:dev": "pnpm run electron:build-src && electron electron/app/main.js",
+    "icon:generate": "node scripts/generate-icon.cjs"
   },
   "dependencies": {
     "@base-ui/react": "^1.6.0",

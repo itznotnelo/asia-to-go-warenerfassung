@@ -5,7 +5,7 @@
   "scripts": {
     "postinstall": "prisma generate",
     "dev": "next dev --turbopack",
-    "build": "next build && node scripts/postbuild-copy-natives.cjs && node scripts/postbuild-copy-static.cjs",
+    "build": "next build && node scripts/postbuild-copy-natives.cjs && node scripts/postbuild-copy-static.cjs && node scripts/postbuild-trim-standalone.cjs",
     "start": "next start",
     "lint": "eslint",
     "test": "vitest run",

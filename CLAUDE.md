@@ -4,11 +4,6 @@ Warenerfassung für einen Asia-Lebensmittelladen in Schaffhausen (CH).
 Die Datenbank dieser App wird später **unverändert** zum Webshop-Backend.
 Jede Schema-Entscheidung ist deshalb eine Shop-Entscheidung.
 
-## Stack
-
-Next.js 15 (App Router) · TypeScript strict · PostgreSQL 16 (Docker) · Prisma ·
-Tailwind v4 · shadcn/ui · Zod · sharp · Vitest · pnpm
-
 ## Harte Regeln
 
 1. **Geld ist `Int` in Rappen.** Niemals Float, niemals `number` für CHF.
@@ -34,24 +29,6 @@ Tailwind v4 · shadcn/ui · Zod · sharp · Vitest · pnpm
 - Deutsche UI-Texte, Schweizer Schreibweise (`ss`, nicht `ß`)
 - Code-Kommentare und Commit-Messages auf Englisch
 - Keine `any`. Kein `@ts-ignore` ohne Begründung im Kommentar.
-
-## Verzeichnisse
-
-```
-app/                Next.js Routes
-  scan/             Hauptseite (Erfassung)
-  products/         Liste + Detail
-  dashboard/        Fortschritt
-  api/              Route Handlers
-components/         UI
-lib/
-  pricing.ts        Grundpreis, MwSt, Formatierung
-  barcode.ts        EAN-Validierung, Prüfziffer
-  openfoodfacts/    Client, Zod-Schemas, Mapping
-  images.ts         Download, Resize, WebP
-prisma/             schema.prisma, migrations, seed.ts
-data/images/        lokale Produktbilder (nicht in Git)
-```
 
 ## Tests
 

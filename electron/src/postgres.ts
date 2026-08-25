@@ -14,8 +14,8 @@ export interface RunningPostgres {
   stop(): Promise<void>;
 }
 
-// Never hardcode 5432 — a developer running this repo's own docker-compose.yml
-// Postgres alongside the packaged app would otherwise collide with it.
+// Never hardcode 5432 — a developer running their own local Postgres
+// alongside the packaged app would otherwise collide with it.
 export async function startEmbeddedPostgres(): Promise<RunningPostgres> {
   const dataDir = pgDataDir();
   const port = await findFreePort();

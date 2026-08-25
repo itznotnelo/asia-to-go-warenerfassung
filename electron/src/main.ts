@@ -63,7 +63,7 @@ function showFatalError(err: unknown): void {
 }
 
 // Fast dev-mode path: point at whatever's already serving the app (pnpm dev,
-// or pnpm start against the Docker Postgres) instead of spinning up embedded
+// or pnpm start against a local Postgres) instead of spinning up embedded
 // Postgres + the standalone build every iteration. Set
 // ASIA_SHOP_FORCE_FULL_BOOT=1 to exercise the real packaged-app boot path
 // from source (requires `pnpm build` to have produced .next/standalone).

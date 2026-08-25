@@ -19,15 +19,12 @@ Für Entwicklung an der App selbst gilt weiterhin das Setup unten.
 
 ## Setup (5 Minuten)
 
-Voraussetzungen: Node 20+, pnpm, Docker Desktop.
+Voraussetzungen: Node 20+, pnpm, eine lokale PostgreSQL-Instanz (16+).
 
 ```bash
 pnpm install
 
-# Postgres starten
-docker compose up -d
-
-# .env anlegen (Default passt zu docker-compose.yml)
+# .env anlegen und DATABASE_URL auf die eigene Postgres-Instanz anpassen
 cp .env.example .env
 
 # Schema anwenden + Beispieldaten einspielen

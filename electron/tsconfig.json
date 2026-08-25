@@ -13,7 +13,8 @@
     "baseUrl": ".",
     "paths": {
       "embedded-postgres": ["./app/node_modules/embedded-postgres/dist/index"],
-      "electron-log": ["./app/node_modules/electron-log"]
+      "electron-log": ["./app/node_modules/electron-log"],
+      "electron-updater": ["./app/node_modules/electron-updater"]
     }
   },
   "include": ["src/**/*.ts"]

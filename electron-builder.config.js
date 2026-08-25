@@ -11,6 +11,15 @@ module.exports = {
   },
   asar: false,
   compression: "maximum",
+  // electron-updater reads this to know where to check for new releases —
+  // electron-builder already publishes latest.yml alongside every .exe via
+  // the release workflow's --publish always, so this just makes the feed
+  // explicit rather than relying on inference from package.json/git remote.
+  publish: {
+    provider: "github",
+    owner: "itznotnelo",
+    repo: "asia-to-go-warenerfassung",
+  },
   // Electron bundles ~55 Chromium UI locale files (spellcheck, context
   // menus, etc.) by default — the app itself is German-only, so keep just
   // German plus an English fallback rather than shipping all of them.

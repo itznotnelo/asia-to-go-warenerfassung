@@ -6,6 +6,7 @@ import { runMigrations } from "./migrate";
 import { seedCategoriesIfEmpty } from "./seed-categories";
 import { startNextServer, RunningServer } from "./server";
 import { loadConfig, saveConfig } from "./config";
+import { initAutoUpdater } from "./updater";
 
 let mainWindow: BrowserWindow | null = null;
 let runningPostgres: RunningPostgres | null = null;
@@ -105,6 +106,7 @@ async function bootFullPipeline(): Promise<void> {
     await mainWindow.loadURL(runningServer.url);
     mainWindow.show();
     splash.close();
+    initAutoUpdater();
   } catch (err) {
     log.error("Failed to start Asia To Go", err);
     splash.close();

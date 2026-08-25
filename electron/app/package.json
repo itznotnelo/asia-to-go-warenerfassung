@@ -1,12 +1,13 @@
 {
   "name": "asia-to-go-app",
-  "version": "0.1.4",
+  "version": "0.1.5",
   "private": true,
   "description": "Warenerfassung for Asia To Go, Schaffhausen",
   "author": "Nelo",
   "main": "main.js",
   "dependencies": {
     "electron-log": "^5.4.4",
+    "electron-updater": "^6.8.9",
     "embedded-postgres": "^18.4.0-beta.17",
     "pg": "^8.23.0",
     "prisma": "^7.9.1"

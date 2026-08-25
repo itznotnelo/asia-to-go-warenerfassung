@@ -3,7 +3,7 @@
   "version": "0.1.4",
   "private": true,
   "description": "Warenerfassung for Asia To Go, Schaffhausen",
-  "author": "nelo",
+  "author": "Nelo",
   "main": "main.js",
   "dependencies": {
     "electron-log": "^5.4.4",

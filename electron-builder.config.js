@@ -3,7 +3,7 @@ const path = require("node:path");
 
 /** @type {import('electron-builder').Configuration} */
 module.exports = {
-  appId: "ch.nelo.asia-to-go",
+  appId: "io.github.itznotnelo.asia-to-go",
   productName: "Asia To Go",
   directories: {
     app: "electron/app",

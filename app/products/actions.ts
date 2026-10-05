@@ -6,6 +6,8 @@ import { prisma } from "@/lib/prisma";
 import { toProductSummary, type ProductSummary } from "@/lib/product-summary";
 import { computeDataComplete, isProductComplete, productInputSchema } from "@/lib/product-schema";
 import { storeUploadedImage } from "@/lib/images";
+import { enqueueProductDeleteSync, enqueueProductSync } from "@/lib/sync/outbox";
+import { triggerBackgroundDrain } from "@/lib/sync/runner";
 
 const updateProductSchema = productInputSchema.extend({ id: z.string().min(1) });
 
@@ -50,6 +52,11 @@ export async function updateProduct(rawInput: unknown): Promise<UpdateProductRes
         dataComplete,
       },
     });
+    // Ticket #1369: jedes Speichern stösst "Auf Website veröffentlichen" an -
+    // landet zuerst in der Outbox (schnell, lokal), der eigentliche Push läuft
+    // danach im Hintergrund, blockiert also nie die Speichern-Antwort.
+    await enqueueProductSync(product.id);
+    triggerBackgroundDrain();
     return { ok: true, product: toProductSummary(product) };
   } catch (error) {
     if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2002") {
@@ -116,6 +123,12 @@ export async function uploadProductImage(formData: FormData): Promise<UploadImag
     }
   }
 
+  // Ein neues Bild kann einen Artikel erst jetzt vollständig machen (oder
+  // ändert das Foto-Set eines bereits vollständigen) - auch hier erneut
+  // zur Veröffentlichung anmelden, aus demselben Grund wie in updateProduct().
+  await enqueueProductSync(product.id);
+  triggerBackgroundDrain();
+
   return { ok: true, path: stored.path, dataComplete };
 }
 
@@ -140,11 +153,27 @@ export async function bulkUpdateProducts(
   }
 
   const result = await prisma.product.updateMany({ where: { id: { in: ids } }, data: patch });
+
+  // isAvailable ist Teil der Shop-Regel (siehe lib/sync/build-ops.ts) - eine
+  // Bulk-Verfügbarkeitsänderung muss dieselbe Veröffentlichung auslösen wie
+  // das einzelne Checkbox-Toggle in quickUpdateProduct().
+  if ("isAvailable" in patch) {
+    for (const id of ids) {
+      await enqueueProductSync(id);
+    }
+    triggerBackgroundDrain();
+  }
+
   return { ok: true, count: result.count };
 }
 
 export async function deleteProduct(id: string): Promise<{ ok: true } | { ok: false; message: string }> {
   if (!id) return { ok: false, message: "Ungültige ID." };
+  // Vor dem lokalen Löschen anmelden - danach gibt es den Artikel nicht mehr,
+  // um Kategorie/Felder für einen Upsert nachzuschlagen, aber ein reiner
+  // delete-Op braucht nur die id (siehe lib/sync/outbox.ts).
+  await enqueueProductDeleteSync(id);
   await prisma.product.delete({ where: { id } });
+  triggerBackgroundDrain();
   return { ok: true };
 }

@@ -8,6 +8,8 @@ import { mapOffToProduct } from "@/lib/openfoodfacts/mapping";
 import { toProductSummary, type ProductSummary } from "@/lib/product-summary";
 import { computeDataComplete, productInputSchema } from "@/lib/product-schema";
 import { attachOffImages, type OffImageUrls } from "@/lib/off-images";
+import { enqueueProductSync } from "@/lib/sync/outbox";
+import { triggerBackgroundDrain } from "@/lib/sync/runner";
 import type { CategoryOption } from "@/lib/category-option";
 import type { LookupResult } from "@/lib/lookup-result";
 
@@ -120,6 +122,12 @@ export async function saveProduct(rawInput: unknown, offImageUrls?: OffImageUrls
     }
   }
 
+  // Ticket #1369: neu erfasste Artikel landen genauso in der Sync-Outbox wie
+  // bearbeitete (meist als "delete"-Op, weil frisch erfasste Artikel ohne
+  // eigenes Foto noch unvollständig sind - harmlos, siehe lib/sync/build-ops.ts).
+  await enqueueProductSync(product.id);
+  triggerBackgroundDrain();
+
   return { ok: true, product: toProductSummary(product) };
 }
 
@@ -139,6 +147,10 @@ export async function quickUpdateProduct(
   }
   const { id, priceRappen, isAvailable } = parsed.data;
   const product = await prisma.product.update({ where: { id }, data: { priceRappen, isAvailable } });
+
+  await enqueueProductSync(id);
+  triggerBackgroundDrain();
+
   return { ok: true, product: toProductSummary(product) };
 }
 

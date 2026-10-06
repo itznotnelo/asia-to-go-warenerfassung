@@ -11,6 +11,9 @@ import { initAutoUpdater } from "./updater";
 let mainWindow: BrowserWindow | null = null;
 let runningPostgres: RunningPostgres | null = null;
 let runningServer: RunningServer | null = null;
+let syncPollTimer: NodeJS.Timeout | null = null;
+
+const SYNC_POLL_INTERVAL_MS = 60_000;
 
 function createSplashWindow(): BrowserWindow {
   const win = new BrowserWindow({
@@ -62,6 +65,27 @@ function showFatalError(err: unknown): void {
   );
 }
 
+// Ticket #1369: schiebt die Website-Sync-Outbox raus und holt neue
+// Bestellungen - läuft hier im Electron-Hauptprozess (der die Lifecycle
+// ohnehin besitzt, siehe waitForReady's eigenes Polling in server.ts), nicht
+// im Next-Server selbst, damit ein Server-Neustart den Timer nicht verdoppelt.
+function startSyncPoll(serverUrl: string): void {
+  const poll = () => {
+    fetch(`${serverUrl}/api/sync/drain`, { method: "POST" }).catch((error) => {
+      log.error("[sync] background poll failed", error);
+    });
+  };
+  poll();
+  syncPollTimer = setInterval(poll, SYNC_POLL_INTERVAL_MS);
+}
+
+function stopSyncPoll(): void {
+  if (syncPollTimer) {
+    clearInterval(syncPollTimer);
+    syncPollTimer = null;
+  }
+}
+
 // Fast dev-mode path: point at whatever's already serving the app (pnpm dev,
 // or pnpm start against the Docker Postgres) instead of spinning up embedded
 // Postgres + the standalone build every iteration. Set
@@ -78,7 +102,9 @@ async function bootDevMode(): Promise<void> {
     title: "Asia To Go",
     autoHideMenuBar: true,
   });
-  await mainWindow.loadURL(process.env.ASIA_SHOP_URL ?? "http://localhost:3000");
+  const url = process.env.ASIA_SHOP_URL ?? "http://localhost:3000";
+  await mainWindow.loadURL(url);
+  startSyncPoll(url);
 }
 
 async function bootFullPipeline(): Promise<void> {
@@ -107,6 +133,7 @@ async function bootFullPipeline(): Promise<void> {
     mainWindow.show();
     splash.close();
     initAutoUpdater();
+    startSyncPoll(runningServer.url);
   } catch (err) {
     log.error("Failed to start Asia To Go", err);
     splash.close();
@@ -134,6 +161,7 @@ app.on("before-quit", (event) => {
   shuttingDown = true;
   event.preventDefault();
 
+  stopSyncPoll();
   const forceExit = setTimeout(() => app.exit(), 5000);
 
   (async () => {

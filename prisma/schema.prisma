@@ -49,6 +49,12 @@ enum ScanResult {
   off_miss
 }
 
+enum ShopOrderStatus {
+  received
+  picked
+  ready
+}
+
 model Category {
   id        String   @id @default(cuid())
   name      String
@@ -95,6 +101,7 @@ model Product {
   notes         String?
   images        ProductImage[]
   scanLogs      ScanLog[]
+  orderItems    ShopOrderItem[]
   createdAt     DateTime    @default(now())
   updatedAt     DateTime    @updatedAt
 
@@ -114,6 +121,10 @@ model ProductImage {
   height            Int
   sortOrder         Int       @default(0)
   sourceAttribution String?
+  // Set once this image has been pushed to the Cloudflare backend's R2
+  // bucket (ticket #1369) — null means "not published yet", not "failed";
+  // see lib/sync/build-ops.ts's imagesReadyForSync.
+  r2Key             String?
   createdAt         DateTime  @default(now())
 
   @@index([productId])
@@ -139,4 +150,62 @@ model OffCache {
   rawJson   Json?
   found     Boolean
   fetchedAt DateTime @default(now())
+}
+
+// Ticket #1369 (website sync): a single row (id always 1) holding this
+// install's Cloudflare backend connection. The device key is generated once
+// by the owner's own setup script on the backend (scripts/create-device-key.mjs
+// in the atg-shop-backend repo) — it lives here, in this install's own
+// Postgres, the same trust boundary as the rest of the shop's data.
+model ShopSyncSettings {
+  id        Int      @id @default(1)
+  apiUrl    String?
+  deviceId  String?
+  deviceKey String?
+  updatedAt DateTime @updatedAt
+}
+
+// The offline queue ticket #1369 asks for: one row per category/product that
+// still needs to reach the backend. Keyed by entityId so repeated saves
+// before a drain just overwrite the pending payload instead of growing an
+// unbounded queue - see lib/sync/outbox.ts.
+model SyncOutbox {
+  id         String   @id @default(cuid())
+  entityType String
+  entityId   String   @unique
+  payload    Json
+  attempts   Int      @default(0)
+  lastError  String?
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  @@index([entityType])
+}
+
+// Mirrors the backend's `orders`/`order_items` tables (atg-shop-backend,
+// migrations/0001_init.sql) for the subset the app needs once an order is
+// imported - see lib/sync/orders.ts.
+model ShopOrder {
+  id             String          @id
+  status         ShopOrderStatus @default(received)
+  customerName   String
+  customerPhone  String?
+  fulfilmentType String
+  totalRappen    Int
+  notes          String?
+  createdAt      DateTime        @default(now())
+  updatedAt      DateTime        @updatedAt
+  items          ShopOrderItem[]
+}
+
+model ShopOrderItem {
+  id        String     @id @default(cuid())
+  orderId   String
+  order     ShopOrder  @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  productId String?
+  product   Product?   @relation(fields: [productId], references: [id], onDelete: SetNull)
+  nameDe    String
+  qty       Int
+
+  @@index([orderId])
 }

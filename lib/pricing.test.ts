@@ -1,5 +1,12 @@
 import { describe, expect, it } from "vitest";
-import { calcUnitPrice, formatChf, roundTo5, vatRappen } from "@/lib/pricing";
+import {
+  calcUnitPrice,
+  formatChf,
+  parseChfToRappen,
+  parseContentAmount,
+  roundTo5,
+  vatRappen,
+} from "@/lib/pricing";
 
 describe("calcUnitPrice", () => {
   it("normalizes grams to CHF/kg", () => {
@@ -65,6 +72,45 @@ describe("roundTo5", () => {
     [422, 420],
   ])("rounds %i rappen to %i", (input, expected) => {
     expect(roundTo5(input)).toBe(expected);
+  });
+});
+
+describe("parseChfToRappen", () => {
+  it.each([
+    ["4.20", 420],
+    ["4,5", 450],
+    ["4", 400],
+    ["4.-", 400],
+    ["1'250.00", 125000],
+    ["1’250.00", 125000],
+    ["1 250.00", 125000],
+    ["1 250", 125000],
+    ["  12.90 ", 1290],
+    ["0.05", 5],
+  ])("parses %s as %i rappen", (input, expected) => {
+    expect(parseChfToRappen(input)).toBe(expected);
+  });
+
+  it.each(["", "abc", "3 50", "4.20.", "12.999", "-4.20", "4.2.0", "1e3", "CHF 4.20"])(
+    "rejects %s",
+    (input) => {
+      expect(parseChfToRappen(input)).toBeNull();
+    },
+  );
+});
+
+describe("parseContentAmount", () => {
+  it.each([
+    ["500", 500],
+    ["1'000", 1000],
+    ["0,5", 0.5],
+    ["1.125", 1.125],
+  ])("parses %s as %d", (input, expected) => {
+    expect(parseContentAmount(input)).toBe(expected);
+  });
+
+  it.each(["", "abc", "1.2345", "1,000.5", "-5"])("rejects %s", (input) => {
+    expect(parseContentAmount(input)).toBeNull();
   });
 });
 

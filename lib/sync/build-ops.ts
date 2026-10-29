@@ -44,6 +44,32 @@ export interface ProductForSync {
   updatedAt: Date;
 }
 
+interface DecimalLike {
+  toNumber(): number;
+}
+
+/** A product row as Prisma returns it: vatRate/contentAmount are Prisma.Decimal, not number. */
+export type ProductRowForSync = Omit<ProductForSync, "vatRate" | "contentAmount"> & {
+  vatRate: DecimalLike | number;
+  contentAmount: DecimalLike | number | null;
+};
+
+function toNumber(value: DecimalLike | number): number {
+  return typeof value === "number" ? value : value.toNumber();
+}
+
+/**
+ * Prisma.Decimal serialises to a JSON string ("2.6"), but the publish contract
+ * (types.ts) says number. Convert explicitly instead of casting the row.
+ */
+export function toProductForSync(row: ProductRowForSync): ProductForSync {
+  return {
+    ...row,
+    vatRate: toNumber(row.vatRate),
+    contentAmount: row.contentAmount === null ? null : toNumber(row.contentAmount),
+  };
+}
+
 // Mirrors the backend's own publish rule (atg-shop-backend, src/routes/catalogue.js:
 // `WHERE is_available = 1 AND data_complete = 1`) - a product that doesn't meet
 // this belongs out of the shop, not in as an incomplete row.

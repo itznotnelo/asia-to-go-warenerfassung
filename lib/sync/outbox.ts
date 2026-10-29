@@ -1,6 +1,6 @@
 import "server-only";
 import { prisma } from "@/lib/prisma";
-import { buildCategoryOp, buildProductOp, type CategoryForSync, type ImageForSync, type ProductForSync } from "./build-ops";
+import { buildCategoryOp, buildProductOp, toProductForSync, type CategoryForSync, type ImageForSync } from "./build-ops";
 import type { PublishOp } from "./types";
 
 async function upsertOutboxRow(entityType: "category" | "product", entityId: string, op: PublishOp): Promise<void> {
@@ -30,7 +30,7 @@ export async function enqueueProductSync(productId: string): Promise<void> {
   });
   if (!product) return;
 
-  const op = buildProductOp(product as unknown as ProductForSync, product.images as unknown as ImageForSync[]);
+  const op = buildProductOp(toProductForSync(product), product.images satisfies ImageForSync[]);
   await upsertOutboxRow("product", productId, op);
 
   if (op.op === "upsert") {

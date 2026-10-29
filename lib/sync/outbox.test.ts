@@ -1,4 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import { Prisma } from "@/lib/generated/prisma/client";
 
 const productMock = {
   findUnique: vi.fn(),
@@ -81,6 +82,19 @@ describe("enqueueProductSync", () => {
 
     expect(syncOutboxMock.upsert).toHaveBeenCalledTimes(1);
     expect(syncOutboxMock.upsert.mock.calls[0][0].create.payload).toEqual({ op: "delete", id: "prod_1" });
+  });
+
+  it("sends vatRate and contentAmount as numbers, not Prisma.Decimal strings", async () => {
+    productMock.findUnique.mockResolvedValue(
+      makeProductRow({ vatRate: new Prisma.Decimal("2.6"), contentAmount: new Prisma.Decimal("0.5") }),
+    );
+    syncOutboxMock.upsert.mockResolvedValue({});
+
+    await enqueueProductSync("prod_1");
+
+    const payload = JSON.parse(JSON.stringify(syncOutboxMock.upsert.mock.calls[0][0].create.payload));
+    expect(payload.product.vatRate).toBe(2.6);
+    expect(payload.product.contentAmount).toBe(0.5);
   });
 
   it("does nothing if the product no longer exists", async () => {

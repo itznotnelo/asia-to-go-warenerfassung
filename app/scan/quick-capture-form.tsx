@@ -3,6 +3,7 @@
 import { useId, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { inputClass } from "@/lib/input-class";
+import { parseChfToRappen, PRICE_ERROR } from "@/lib/pricing";
 import type { CategoryOption } from "@/lib/category-option";
 import type { DataSource } from "@/lib/generated/prisma/client";
 import type { ProductInput as SaveProductInput } from "@/lib/product-schema";
@@ -27,12 +28,17 @@ export function QuickCaptureForm({ ean, categories, initialNameDe, dataSource, o
   const [nameDe, setNameDe] = useState(initialNameDe ?? "");
   const [categoryId, setCategoryId] = useState("");
   const [priceChf, setPriceChf] = useState("");
+  const [priceError, setPriceError] = useState<string | null>(null);
   const formId = useId();
 
   function handleSubmit(event: React.FormEvent) {
     event.preventDefault();
-    const priceRappen = Math.round(Number.parseFloat(priceChf.replace(",", ".")) * 100);
-    if (!Number.isFinite(priceRappen) || priceRappen <= 0) return;
+    const priceRappen = parseChfToRappen(priceChf);
+    if (priceRappen === null || priceRappen <= 0) {
+      setPriceError(PRICE_ERROR);
+      return;
+    }
+    setPriceError(null);
 
     const category = categories.find((c) => c.id === categoryId);
     onSave(buildQuickCaptureInput({ ean, nameDe, categoryId, priceRappen, category, dataSource }));
@@ -95,8 +101,10 @@ export function QuickCaptureForm({ ean, categories, initialNameDe, dataSource, o
             inputMode="decimal"
             value={priceChf}
             onChange={(e) => setPriceChf(e.target.value)}
+            aria-invalid={priceError !== null}
             className={inputClass() + " font-numeric"}
           />
+          {priceError && <span role="alert" className="text-sm text-destructive">{priceError}</span>}
         </label>
       </div>
 

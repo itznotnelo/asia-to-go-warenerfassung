@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { Button } from "@/components/ui/button";
-import { formatChf } from "@/lib/pricing";
+import { formatChf, parseChfToRappen, PRICE_ERROR } from "@/lib/pricing";
 import type { CategoryOption } from "@/lib/category-option";
 import type { ProductSummary } from "@/lib/product-summary";
 
@@ -18,12 +18,17 @@ interface ExistingProductPanelProps {
 export function ExistingProductPanel({ product, categories, onSave, onCancel, saving }: ExistingProductPanelProps) {
   const [priceChf, setPriceChf] = useState((product.priceRappen / 100).toFixed(2));
   const [isAvailable, setIsAvailable] = useState(product.isAvailable);
+  const [priceError, setPriceError] = useState<string | null>(null);
   const categoryName = categories.find((c) => c.id === product.categoryId)?.name;
 
   function handleSubmit(event: React.FormEvent) {
     event.preventDefault();
-    const priceRappen = Math.round(Number.parseFloat(priceChf.replace(",", ".")) * 100);
-    if (!Number.isFinite(priceRappen) || priceRappen <= 0) return;
+    const priceRappen = parseChfToRappen(priceChf);
+    if (priceRappen === null || priceRappen <= 0) {
+      setPriceError(PRICE_ERROR);
+      return;
+    }
+    setPriceError(null);
     onSave({ id: product.id, priceRappen, isAvailable });
   }
 
@@ -55,8 +60,10 @@ export function ExistingProductPanel({ product, categories, onSave, onCancel, sa
             value={priceChf}
             onChange={(event) => setPriceChf(event.target.value)}
             inputMode="decimal"
-            className="font-numeric h-14 w-40 rounded-lg border border-input bg-transparent px-3 text-2xl outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50"
+            aria-invalid={priceError !== null}
+            className="font-numeric h-14 w-40 rounded-lg border border-input bg-transparent px-3 text-2xl outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50 aria-invalid:border-destructive"
           />
+          {priceError && <span role="alert" className="text-sm text-destructive">{priceError}</span>}
         </label>
 
         <label className="flex h-14 items-center gap-3 rounded-lg border border-input px-4">

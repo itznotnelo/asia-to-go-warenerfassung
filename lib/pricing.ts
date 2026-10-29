@@ -41,6 +41,42 @@ export function roundTo5(rappen: number): number {
   return Math.round(rappen / 5) * 5;
 }
 
+// Strip what people type around a Swiss price: spaces, thousands apostrophes
+// (' and ’) and a trailing ".-" / ".–" ("4.-"). Everything else must match exactly.
+function normalizeNumberInput(input: string): string {
+  return input
+    .trim()
+    .replace(/[\s'’]/g, "")
+    .replace(/\.[-–]$/, "");
+}
+
+/**
+ * Strenger CHF-Parser für alle Preisfelder. Gibt `null` zurück statt zu raten:
+ * "1'250.00" → 125000, "4,5" → 450, aber "3 50" (Leerzeichen als Komma
+ * gemeint?), "4.20." oder "12.999" → null. parseFloat hätte "1'250" als 1 gelesen.
+ */
+export function parseChfToRappen(input: string): number | null {
+  const raw = input.trim();
+  // "3 50" is ambiguous (3.50 or 350?), refuse instead of guessing.
+  if (/\d\s+\d{1,2}$/.test(raw) && !/[.,]/.test(raw)) return null;
+  const match = /^(\d+)(?:[.,](\d{1,2}))?$/.exec(normalizeNumberInput(raw));
+  if (!match) return null;
+  const francs = Number(match[1]);
+  const rappen = Number((match[2] ?? "").padEnd(2, "0"));
+  const total = francs * 100 + rappen;
+  return Number.isSafeInteger(total) ? total : null;
+}
+
+export const PRICE_ERROR = "Preis nicht erkannt. Beispiel: 4.50 oder 1'250.00";
+
+/** Strenger Parser für Inhaltsmengen (max. 3 Nachkommastellen): "1'000" → 1000, nicht 1. */
+export function parseContentAmount(input: string): number | null {
+  const match = /^(\d+)(?:[.,](\d{1,3}))?$/.exec(normalizeNumberInput(input));
+  if (!match) return null;
+  const value = Number(`${match[1]}.${match[2] ?? "0"}`);
+  return Number.isFinite(value) ? value : null;
+}
+
 /** Einzige Stelle, an der Rappen-Beträge als CHF-String formatiert werden. */
 export function formatChf(rappen: number): string {
   const negative = rappen < 0;

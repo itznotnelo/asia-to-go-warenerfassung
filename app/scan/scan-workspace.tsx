@@ -9,6 +9,7 @@ import { ExistingProductPanel } from "./existing-product-panel";
 import { ProductForm, mappedOffToFormValues } from "./product-form";
 import { QuickCaptureForm } from "./quick-capture-form";
 import { SearchPalette } from "./search-palette";
+import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { lookupBarcode, quickUpdateProduct, saveProduct } from "./actions";
 import { saveErrorLines, settle } from "@/lib/save-error";
@@ -114,6 +115,16 @@ export function ScanWorkspace({ categories }: { categories: CategoryOption[] }) 
     dispatch({ type: "reset" });
   }
 
+  function captureWithoutBarcode() {
+    setSaveError(null);
+    setScanRejected(false);
+    dispatch({ type: "no-barcode" });
+  }
+
+  const manualEan = state.status === "new-miss" || state.status === "off-error" ? state.ean : null;
+  // Offered whenever no form is open; in the invalid state it is the way out for a misprinted code.
+  const canCaptureWithoutBarcode = state.status === "idle" || state.status === "invalid" || state.status === "saved";
+
   return (
     <div className="mx-auto flex w-full max-w-2xl flex-col gap-6 px-4 py-10">
       <ScanStatus state={state} />
@@ -125,6 +136,12 @@ export function ScanWorkspace({ categories }: { categories: CategoryOption[] }) 
       )}
 
       <ManualEntry onSubmit={submitManualBarcode} />
+
+      {canCaptureWithoutBarcode && (
+        <Button type="button" variant="outline" className="self-center" onClick={captureWithoutBarcode}>
+          {state.status === "invalid" ? "Trotzdem ohne Barcode erfassen" : "Artikel ohne Barcode erfassen"}
+        </Button>
+      )}
 
       <div role="group" aria-label="Erfassungsmodus" className="inline-flex self-center overflow-hidden rounded-md border border-border text-sm">
         <button
@@ -184,11 +201,11 @@ export function ScanWorkspace({ categories }: { categories: CategoryOption[] }) 
           );
         })()}
 
-      {(state.status === "new-miss" || state.status === "off-error") &&
+      {(state.status === "new-miss" || state.status === "off-error" || state.status === "no-barcode") &&
         (captureMode === "quick" ? (
           <QuickCaptureForm
-            key={state.ean}
-            ean={state.ean}
+            key={manualEan ?? "no-barcode"}
+            ean={manualEan}
             categories={categories}
             dataSource="manual"
             onSave={handleSave}
@@ -198,8 +215,8 @@ export function ScanWorkspace({ categories }: { categories: CategoryOption[] }) 
           />
         ) : (
           <ProductForm
-            key={state.ean}
-            ean={state.ean}
+            key={manualEan ?? "no-barcode"}
+            ean={manualEan}
             categories={categories}
             lastSaved={lastSaved ?? undefined}
             dataSource="manual"

@@ -9,6 +9,7 @@ describe("scan status texts (#39)", () => {
       presentStatus({ status: "new-hit", ean, mapped: { allergens: [], traces: [], imageUrls: {} } }),
       presentStatus({ status: "new-miss", ean }),
       presentStatus({ status: "off-error", ean }),
+      presentStatus({ status: "no-barcode" }),
     ].flatMap((p) => [p.label, p.detail ?? ""]);
 
     expect(texts).toContain("Neuer Artikel: online gefunden");

@@ -57,6 +57,12 @@ export function presentStatus(state: ScanState): StatusPresentation {
         className: "bg-destructive text-destructive-foreground",
         animate: "flash",
       };
+    case "no-barcode":
+      return {
+        label: "Neuer Artikel ohne Barcode",
+        detail: "Bekommt beim Speichern eine eigene Artikelnummer",
+        className: "bg-secondary text-foreground",
+      };
     case "saved":
       return {
         label: state.message,

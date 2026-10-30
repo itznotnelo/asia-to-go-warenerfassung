@@ -78,9 +78,22 @@ describe("scanReducer", () => {
       { status: "new-miss", ean: "1" },
       { status: "off-error", ean: "1" },
       { status: "invalid", barcode: "1" },
+      { status: "no-barcode" },
     ];
     for (const state of states) {
       expect(scanReducer(state, { type: "reset" })).toEqual({ status: "idle" });
     }
+  });
+
+  it("opens capture without a barcode from idle and from an invalid scan (#28)", () => {
+    expect(scanReducer(initialScanState, { type: "no-barcode" })).toEqual({ status: "no-barcode" });
+    expect(scanReducer({ status: "invalid", barcode: "3017620422007" }, { type: "no-barcode" })).toEqual({ status: "no-barcode" });
+  });
+
+  it("lets a real scan replace the no-barcode capture", () => {
+    expect(scanReducer({ status: "no-barcode" }, { type: "scan", result: { kind: "looking-up", ean: "3017620422003" } })).toEqual({
+      status: "looking-up",
+      ean: "3017620422003",
+    });
   });
 });

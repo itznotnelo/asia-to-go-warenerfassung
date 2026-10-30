@@ -10,16 +10,19 @@ export type ScanState =
   | { status: "new-miss"; ean: string }
   | { status: "off-error"; ean: string }
   | { status: "invalid"; barcode: string }
+  // Article without a (readable) barcode: saved with ean null and an ASIA-xxxxx SKU.
+  | { status: "no-barcode" }
   | { status: "saved"; message: string };
 
 export type ScanResultAction = { kind: "invalid"; barcode: string } | { kind: "looking-up"; ean: string } | LookupResult;
 
-export type ScanAction = { type: "scan"; result: ScanResultAction } | { type: "reset" } | { type: "saved"; message: string };
+export type ScanAction = { type: "scan"; result: ScanResultAction } | { type: "reset" } | { type: "no-barcode" } | { type: "saved"; message: string };
 
 export const initialScanState: ScanState = { status: "idle" };
 
 export function scanReducer(_state: ScanState, action: ScanAction): ScanState {
   if (action.type === "reset") return { status: "idle" };
+  if (action.type === "no-barcode") return { status: "no-barcode" };
   if (action.type === "saved") return { status: "saved", message: action.message };
 
   const result = action.result;

@@ -46,6 +46,13 @@ describe("mappedOffToFormValues", () => {
     expect(initial).not.toHaveProperty("allergensConfirmed");
   });
 
+  it("carries OFF nutrition into the form values without marking a field (#30)", () => {
+    const nutrition = { energyKcal100g: 539, fat100g: 30.9 };
+    const { initial, sourced } = mappedOffToFormValues({ ...emptyMapped, nutrition });
+    expect(initial.nutrition).toEqual(nutrition);
+    expect(sourced.size).toBe(0);
+  });
+
   it("produces an empty result for a fully empty mapping", () => {
     const { initial, sourced } = mappedOffToFormValues(emptyMapped);
     expect(initial).toEqual({});
@@ -85,7 +92,7 @@ describe("duplicatedFieldsFromLastSaved", () => {
     categoryId: "cat-1",
     priceRappen: 495,
     vatRate: 2.6,
-    unitType: "weight",
+    unitType: "piece",
     contentAmount: 250,
     contentUnit: "ml",
     storageType: "ambient",
@@ -116,6 +123,11 @@ describe("duplicatedFieldsFromLastSaved", () => {
     expect(duplicated).not.toHaveProperty("priceChf");
     expect(duplicated).not.toHaveProperty("contentAmount");
   });
+
+  it("does not copy nutrition, so the scanned article keeps its own (#30)", () => {
+    const duplicated = duplicatedFieldsFromLastSaved({ ...lastSaved, nutrition: { fat100g: 1 } });
+    expect(duplicated).not.toHaveProperty("nutrition");
+  });
 });
 
 describe("productSummaryToFormValues", () => {
@@ -130,7 +142,7 @@ describe("productSummaryToFormValues", () => {
     categoryId: "cat-1",
     priceRappen: 495,
     vatRate: 2.6,
-    unitType: "weight",
+    unitType: "piece",
     contentAmount: 250,
     contentUnit: "ml",
     storageType: "ambient",

@@ -187,6 +187,25 @@ describe("createProduct", () => {
     expect(data.traces).toEqual(["sesame"]);
   });
 
+  it("saves OFF nutrition with the new product (#30)", async () => {
+    productMock.create.mockResolvedValue(savedRow("ASIA-00042"));
+    const nutrition = { energyKcal100g: 539, fat100g: 30.9 };
+    await createProduct({ ...INPUT, dataSource: "openfoodfacts", nutrition });
+    expect(productMock.create.mock.calls[0][0].data.nutrition).toEqual(nutrition);
+  });
+
+  it("leaves nutrition out when none came with the scan (#30)", async () => {
+    productMock.create.mockResolvedValue(savedRow("ASIA-00042"));
+    await createProduct(INPUT);
+    expect(productMock.create.mock.calls[0][0].data).not.toHaveProperty("nutrition");
+  });
+
+  it("rejects a weight article in Stk before touching the DB (#32)", async () => {
+    const result = await createProduct({ ...INPUT, unitType: "weight", contentAmount: 5, contentUnit: "stk" });
+    expect(result).toMatchObject({ ok: false, fieldErrors: { contentUnit: ["Offen nach Gewicht braucht g oder kg"] } });
+    expect(productMock.create).not.toHaveBeenCalled();
+  });
+
   it("stamps allergensConfirmedAt when the user confirmed", async () => {
     productMock.create.mockResolvedValue(savedRow("ASIA-00042"));
     await createProduct({ ...INPUT, allergens: ["gluten"], allergensConfirmed: true });

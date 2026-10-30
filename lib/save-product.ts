@@ -109,6 +109,7 @@ export async function createProduct(rawInput: unknown, offImageUrls?: OffImageUr
     notes: input.notes || null,
     dataSource: input.dataSource,
     dataComplete,
+    ...(input.nutrition !== undefined && { nutrition: input.nutrition }),
   };
 
   const created = await insertWithFreshSku(data);

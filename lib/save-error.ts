@@ -24,6 +24,7 @@ const FIELD_LABELS: Record<string, string> = {
   allergensConfirmed: "Allergene geprüft",
   notes: "Notiz",
   dataSource: "Quelle",
+  nutrition: "Nährwerte",
 };
 
 /** The server message first, then one "Feld: Meldung" line per rejected field. */

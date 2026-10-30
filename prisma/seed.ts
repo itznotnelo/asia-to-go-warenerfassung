@@ -2,6 +2,7 @@ import "dotenv/config";
 import { PrismaPg } from "@prisma/adapter-pg";
 import { PrismaClient } from "../lib/generated/prisma/client";
 import { isValidBarcode, normalizeGtin } from "../lib/barcode";
+import { unitRuleIssues } from "../lib/unit-rules";
 
 const adapter = new PrismaPg({ connectionString: process.env.DATABASE_URL });
 const prisma = new PrismaClient({ adapter });
@@ -101,7 +102,8 @@ async function seedCategories(nodes: CategorySeed[], parentId: string | null): P
 }
 
 // Handvoll repräsentative Artikel zum Durchtesten von calcUnitPrice(),
-// MwSt-Zuordnung und den drei Lagertypen. dataComplete bleibt bewusst auf
+// MwSt-Zuordnung und den drei Lagertypen. All of them are prepacked, so
+// unitType is "piece" (see lib/unit-rules.ts). dataComplete bleibt bewusst auf
 // dem Default `false` — es fehlt jeweils mindestens ein Produktbild.
 interface ProductSeed {
   ean: string;
@@ -131,7 +133,7 @@ const products: ProductSeed[] = [
     originCountry: "CN",
     categorySlug: "sojasauce-wuerzsaucen",
     priceRappen: 495,
-    unitType: "weight",
+    unitType: "piece",
     contentAmount: 510,
     contentUnit: "g",
     storageType: "ambient",
@@ -147,7 +149,7 @@ const products: ProductSeed[] = [
     originCountry: "TH",
     categorySlug: "reis",
     priceRappen: 1590,
-    unitType: "weight",
+    unitType: "piece",
     contentAmount: 5,
     contentUnit: "kg",
     storageType: "ambient",
@@ -179,7 +181,7 @@ const products: ProductSeed[] = [
     originCountry: "CN",
     categorySlug: "tk-teigtaschen-dumplings",
     priceRappen: 690,
-    unitType: "weight",
+    unitType: "piece",
     contentAmount: 900,
     contentUnit: "g",
     storageType: "frozen",
@@ -195,7 +197,7 @@ const products: ProductSeed[] = [
     originCountry: "KR",
     categorySlug: "kimchi-fermentiertes",
     priceRappen: 790,
-    unitType: "weight",
+    unitType: "piece",
     contentAmount: 500,
     contentUnit: "g",
     storageType: "chilled",
@@ -211,7 +213,7 @@ const products: ProductSeed[] = [
     originCountry: "CH",
     categorySlug: "tofu-sojaprodukte",
     priceRappen: 350,
-    unitType: "weight",
+    unitType: "piece",
     contentAmount: 400,
     contentUnit: "g",
     storageType: "chilled",
@@ -260,6 +262,14 @@ function assertValidSeedEans(seeds: ProductSeed[]) {
 }
 
 async function seedProducts(idBySlug: Map<string, string>) {
+  // The seed writes past productInputSchema, so check the unit rules here.
+  for (const product of products) {
+    const issues = unitRuleIssues(product);
+    if (issues.length > 0) {
+      throw new Error(`Ungültige Einheit im Produkt-Seed ${product.sku}: ${issues.map((issue) => issue.message).join(", ")}`);
+    }
+  }
+
   for (const product of products) {
     const categoryId = idBySlug.get(product.categorySlug);
     if (!categoryId) {

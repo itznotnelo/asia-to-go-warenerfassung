@@ -2,6 +2,8 @@ import { z } from "zod";
 import { VAT_RATES } from "@/lib/pricing";
 import { ALLERGEN_KEYS } from "@/lib/allergens";
 import { isValidBarcode, normalizeGtin } from "@/lib/barcode";
+import { nutritionSchema } from "@/lib/nutrition";
+import { unitRuleIssues, type UnitFields } from "@/lib/unit-rules";
 
 // Server actions are plain POST endpoints, so the UI <select> is not enough to keep 7.7 or 0 out.
 export const vatRateSchema = z.number().refine((rate) => VAT_RATES.includes(rate), "MwSt muss 2.6 % oder 8.1 % sein");
@@ -21,7 +23,14 @@ const allergenListSchema = z
   .array(z.string().refine((key) => ALLERGEN_KEYS.includes(key), "Unbekanntes Allergen"))
   .default([]);
 
-export const productInputSchema = z.object({
+// unitType meaning and the allowed unit combinations: see lib/unit-rules.ts.
+function checkUnitRules(input: UnitFields, ctx: z.RefinementCtx): void {
+  for (const issue of unitRuleIssues(input)) {
+    ctx.addIssue({ code: "custom", path: [issue.path], message: issue.message });
+  }
+}
+
+const productInputObject = z.object({
   ean: z
     .string()
     .trim()
@@ -46,7 +55,14 @@ export const productInputSchema = z.object({
   allergensConfirmed: z.boolean().default(false),
   notes: z.string().trim().optional(),
   dataSource: z.enum(["openfoodfacts", "manual", "ai_extracted"]),
+  // OFF values carried through the form. Absent means "not sent", so an edit keeps what is stored.
+  nutrition: nutritionSchema.optional(),
 });
+
+export const productInputSchema = productInputObject.superRefine(checkUnitRules);
+
+/** Edit-page variant: same fields and unit rules, plus the product id. */
+export const updateProductSchema = productInputObject.extend({ id: z.string().min(1) }).superRefine(checkUnitRules);
 
 export type ProductInput = z.infer<typeof productInputSchema>;
 

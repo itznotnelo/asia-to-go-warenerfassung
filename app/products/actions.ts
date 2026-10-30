@@ -4,14 +4,12 @@ import { z } from "zod";
 import { Prisma } from "@/lib/generated/prisma/client";
 import { prisma } from "@/lib/prisma";
 import { toProductSummary, type ProductSummary } from "@/lib/product-summary";
-import { allergensConfirmedAtFor, computeDataComplete, isProductComplete, productInputSchema } from "@/lib/product-schema";
+import { allergensConfirmedAtFor, computeDataComplete, isProductComplete, updateProductSchema } from "@/lib/product-schema";
 import { removeProductImageDir, storeUploadedImage } from "@/lib/images";
 import { enqueueProductDeleteSync, enqueueProductSync } from "@/lib/sync/outbox";
 import { triggerBackgroundDrain } from "@/lib/sync/runner";
 import { applyBulkUpdate, type BulkUpdateResult } from "@/lib/bulk-update";
 import { CATEGORY_ERROR, isAssignableCategory } from "@/lib/category-guard";
-
-const updateProductSchema = productInputSchema.extend({ id: z.string().min(1) });
 
 type UpdateProductResult =
   | { ok: true; product: ProductSummary }
@@ -57,6 +55,8 @@ export async function updateProduct(rawInput: unknown): Promise<UpdateProductRes
         notes: input.notes || null,
         dataSource: input.dataSource,
         dataComplete,
+        // The edit form doesn't send nutrition, so only write it when it was sent.
+        ...(input.nutrition !== undefined && { nutrition: input.nutrition }),
       },
     });
     // Ticket #1369: jedes Speichern stösst "Auf Website veröffentlichen" an -

@@ -93,6 +93,52 @@ describe("mapOffToProduct", () => {
     expect(parsed.product).toBeUndefined();
   });
 
+  it("turns empty-string nutriments into missing values, not 0 (#30)", () => {
+    const mapped = mapOffToProduct(
+      parseFixture({ status: 1, product: { code: "1", nutriments: { "energy-kcal_100g": "", fat_100g: "", salt_100g: " " } } }),
+    );
+    expect(mapped.nutrition).toBeUndefined();
+  });
+
+  it("keeps numeric strings and drops only the bad nutriment, instead of failing the lookup (#30)", () => {
+    const mapped = mapOffToProduct(
+      parseFixture({
+        status: 1,
+        product: {
+          code: "1",
+          nutriments: { "energy-kcal_100g": "120", fat_100g: "abc", sugars_100g: 250, proteins_100g: 3.5, salt_100g: { value: 1 } },
+        },
+      }),
+    );
+    expect(mapped.nutrition).toEqual({ energyKcal100g: 120, proteins100g: 3.5 });
+  });
+
+  it("ignores a nutriments field that is not an object (#30)", () => {
+    const product = parseFixture({ status: 1, product: { code: "1", product_name: "Tee", nutriments: "n/a" } });
+    expect(mapOffToProduct(product).nutrition).toBeUndefined();
+    expect(mapOffToProduct(product).nameDe).toBe("Tee");
+  });
+
+  it("keeps https openfoodfacts.org image URLs and drops everything else (#30)", () => {
+    const mapped = mapOffToProduct(
+      parseFixture({
+        status: 1,
+        product: {
+          code: "1",
+          image_front_url: "https://images.openfoodfacts.org/images/products/1/front_de.3.400.jpg",
+          image_ingredients_url: "http://images.openfoodfacts.org/images/products/1/ingredients_de.4.400.jpg",
+          image_nutrition_url: "https://openfoodfacts.org.evil.example/n.jpg",
+        },
+      }),
+    );
+    expect(mapped.imageUrls).toEqual({ front: "https://images.openfoodfacts.org/images/products/1/front_de.3.400.jpg" });
+  });
+
+  it.each(["http://127.0.0.1:5432/", "file:///etc/passwd", "not a url", 42])("drops image URL %s without failing the lookup", (url) => {
+    const mapped = mapOffToProduct(parseFixture({ status: 1, product: { code: "1", image_front_url: url } }));
+    expect(mapped.imageUrls.front).toBeUndefined();
+  });
+
   it("returns empty arrays, not undefined, when nothing is set", () => {
     const mapped = mapOffToProduct(parseFixture({ status: 1, product: { code: "0" } }));
     expect(mapped.allergens).toEqual([]);

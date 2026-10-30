@@ -132,9 +132,9 @@ export function ProductFieldset({ formId, values, onChange, categories, sourced,
             onChange={(e) => onChange("unitType", e.target.value as UnitType)}
             className={inputClass()}
           >
-            <option value="piece">Stück</option>
-            <option value="weight">Gewicht</option>
-            <option value="volume">Volumen</option>
+            <option value="piece">Packung (Preis pro Stück)</option>
+            <option value="weight">Offen nach Gewicht (g/kg)</option>
+            <option value="volume">Offen nach Volumen (ml/l)</option>
           </select>
         </Field>
 

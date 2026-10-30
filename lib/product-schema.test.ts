@@ -1,5 +1,13 @@
 import { describe, expect, it } from "vitest";
-import { allergensConfirmedAtFor, computeDataComplete, isProductComplete, MAX_PRICE_RAPPEN, productInputSchema, type ProductInput } from "./product-schema";
+import {
+  allergensConfirmedAtFor,
+  computeDataComplete,
+  isProductComplete,
+  MAX_PRICE_RAPPEN,
+  productInputSchema,
+  updateProductSchema,
+  type ProductInput,
+} from "./product-schema";
 
 const complete: ProductInput = {
   ean: "3017620422003",
@@ -7,7 +15,7 @@ const complete: ProductInput = {
   categoryId: "cat-1",
   priceRappen: 495,
   vatRate: 2.6,
-  unitType: "weight",
+  unitType: "piece",
   contentAmount: 250,
   contentUnit: "ml",
   storageType: "ambient",
@@ -98,6 +106,70 @@ describe("productInputSchema allergens", () => {
     expect(productInputSchema.safeParse({ ...complete, allergens: ["soybeans", "en:soy"] }).success).toBe(false);
     expect(productInputSchema.safeParse({ ...complete, traces: ["peanut"] }).success).toBe(false);
     expect(productInputSchema.safeParse({ ...complete, traces: ["peanuts", "sesame"] }).success).toBe(true);
+  });
+});
+
+describe("productInputSchema unit rules (#32)", () => {
+  function fieldErrorsFor(input: Partial<ProductInput>) {
+    const parsed = productInputSchema.safeParse({ ...complete, ...input });
+    return parsed.success ? undefined : parsed.error.flatten().fieldErrors;
+  }
+
+  it("lets a pack carry any content unit, or none", () => {
+    for (const contentUnit of ["g", "kg", "ml", "l", "stk"] as const) {
+      expect(fieldErrorsFor({ unitType: "piece", contentAmount: 5, contentUnit })).toBeUndefined();
+    }
+    expect(fieldErrorsFor({ unitType: "piece", contentAmount: undefined, contentUnit: undefined })).toBeUndefined();
+  });
+
+  it("allows loose goods only in matching units", () => {
+    expect(fieldErrorsFor({ unitType: "weight", contentAmount: 1, contentUnit: "kg" })).toBeUndefined();
+    expect(fieldErrorsFor({ unitType: "weight", contentAmount: 100, contentUnit: "g" })).toBeUndefined();
+    expect(fieldErrorsFor({ unitType: "volume", contentAmount: 1, contentUnit: "l" })).toBeUndefined();
+    expect(fieldErrorsFor({ unitType: "volume", contentAmount: undefined, contentUnit: "ml" })?.contentAmount).toEqual([
+      "Inhaltsmenge fehlt zur Einheit",
+    ]);
+  });
+
+  it.each([
+    ["weight", "ml"],
+    ["weight", "stk"],
+    ["volume", "g"],
+    ["volume", "stk"],
+  ] as const)("rejects %s with %s", (unitType, contentUnit) => {
+    const errors = fieldErrorsFor({ unitType, contentAmount: 1, contentUnit });
+    expect(errors?.contentUnit?.[0]).toMatch(/braucht/);
+  });
+
+  it("rejects loose goods without a unit, since no Grundpreis could be shown", () => {
+    const errors = fieldErrorsFor({ unitType: "weight", contentAmount: undefined, contentUnit: undefined });
+    expect(errors?.contentUnit).toEqual(["Offen nach Gewicht braucht g oder kg"]);
+  });
+
+  it("requires amount and unit together", () => {
+    expect(fieldErrorsFor({ contentAmount: undefined, contentUnit: "g" })?.contentAmount).toEqual(["Inhaltsmenge fehlt zur Einheit"]);
+    expect(fieldErrorsFor({ contentAmount: 250, contentUnit: undefined })?.contentUnit).toEqual(["Einheit fehlt zur Inhaltsmenge"]);
+  });
+
+  it("applies the same rules on the edit path", () => {
+    expect(updateProductSchema.safeParse({ ...complete, id: "p1" }).success).toBe(true);
+    expect(updateProductSchema.safeParse({ ...complete, id: "p1", unitType: "volume", contentUnit: "g" }).success).toBe(false);
+    expect(updateProductSchema.safeParse({ ...complete, id: "" }).success).toBe(false);
+  });
+});
+
+describe("productInputSchema nutrition (#30)", () => {
+  it("is optional and passes OFF values through unchanged", () => {
+    expect(productInputSchema.parse(complete).nutrition).toBeUndefined();
+    const nutrition = { energyKcal100g: 539, fat100g: 30.9, salt100g: 0.107 };
+    expect(productInputSchema.parse({ ...complete, nutrition }).nutrition).toEqual(nutrition);
+  });
+
+  it("rejects unknown keys, strings and impossible values", () => {
+    expect(productInputSchema.safeParse({ ...complete, nutrition: { kcal: 100 } }).success).toBe(false);
+    expect(productInputSchema.safeParse({ ...complete, nutrition: { fat100g: "30" } }).success).toBe(false);
+    expect(productInputSchema.safeParse({ ...complete, nutrition: { fat100g: 130 } }).success).toBe(false);
+    expect(productInputSchema.safeParse({ ...complete, nutrition: { sugars100g: -1 } }).success).toBe(false);
   });
 });
 

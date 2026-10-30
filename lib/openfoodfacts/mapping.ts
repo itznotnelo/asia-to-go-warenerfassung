@@ -1,3 +1,4 @@
+import type { Nutrition } from "@/lib/nutrition";
 import type { OffProduct } from "./schema";
 import { mapAllergenTags } from "./allergens";
 import { suggestOriginCountry } from "./countries";
@@ -7,16 +8,8 @@ import { parseQuantity } from "./quantity";
 // deutscher Produktname durchgehen und stattdessen den Originalnamen liefern.
 const NON_LATIN_SCRIPT = /[぀-ヿ㐀-鿿가-힯฀-๿]/;
 
-export interface MappedNutrition {
-  energyKcal100g?: number;
-  fat100g?: number;
-  saturatedFat100g?: number;
-  carbohydrates100g?: number;
-  sugars100g?: number;
-  fiber100g?: number;
-  proteins100g?: number;
-  salt100g?: number;
-}
+// Same shape the save schemas accept, so the form can pass it on unchanged.
+export type MappedNutrition = Nutrition;
 
 export interface MappedOffProduct {
   nameDe?: string;

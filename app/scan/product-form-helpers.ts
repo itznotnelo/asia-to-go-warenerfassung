@@ -1,4 +1,5 @@
 import type { MappedOffProduct } from "@/lib/openfoodfacts/mapping";
+import type { Nutrition } from "@/lib/nutrition";
 import type { ContentUnit, DataSource, StorageType, UnitType } from "@/lib/generated/prisma/client";
 import type { ProductSummary } from "@/lib/product-summary";
 import type { CategoryOption } from "@/lib/category-option";
@@ -23,6 +24,8 @@ export interface FormValues {
   /** The "Allergene geprüft" tick. Never pre-set from OFF (hard rule 5). */
   allergensConfirmed: boolean;
   notes: string;
+  /** OFF nutrition per 100 g/ml, not editable, passed through to the save. */
+  nutrition?: Nutrition;
 }
 
 export const EMPTY_VALUES: FormValues = {
@@ -71,6 +74,8 @@ export function mappedOffToFormValues(mapped: MappedOffProduct): { initial: Part
     sourced.add("traces");
   }
   // OFF lists are suggestions only: allergensConfirmed stays false (hard rule 5).
+  // Not marked as sourced: no field shows it, it only rides along to the save.
+  if (mapped.nutrition) initial.nutrition = mapped.nutrition;
 
   return { initial, sourced };
 }
@@ -166,6 +171,7 @@ export function buildQuickCaptureInput(params: {
  * bleibt ohnehin der des aktuell offenen Scans, nicht Teil von FormValues.
  * Allergene werden übernommen, die Prüfung nicht: eine Variante kann andere
  * Allergene haben, also muss sie jemand neu bestätigen.
+ * Nutrition is not copied either: it belongs to the scanned article.
  */
 export function duplicatedFieldsFromLastSaved(lastSaved: SaveProductInput): Partial<FormValues> {
   return {

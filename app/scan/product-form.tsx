@@ -69,6 +69,7 @@ export function ProductForm({ ean, categories, initial, sourced, lastSaved, data
       allergensConfirmed: values.allergensConfirmed,
       notes: values.notes || undefined,
       dataSource,
+      nutrition: values.nutrition,
     };
     onSave(input);
   }

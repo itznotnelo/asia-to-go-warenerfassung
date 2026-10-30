@@ -1,6 +1,10 @@
+import os from "node:os";
+import path from "node:path";
 import { describe, expect, it } from "vitest";
 import {
   blockedDialog,
+  copyFolderRefusal,
+  removeCopyFolderDialog,
   encodingFailedDialog,
   migrateFailedDialog,
   quitWhileBackupDialog,
@@ -56,6 +60,22 @@ describe("update dialogs", () => {
 
   it("waiting for a fixed version", () => {
     expect(waitingForFixDialog().message).toBe("Die App wartet auf eine reparierte Version. Die Daten sind sicher.");
+  });
+
+  it("second copy: refuses the app's own folder and unwritable folders", () => {
+    const userData = path.join(os.tmpdir(), "Asia To Go");
+    expect(copyFolderRefusal(path.join(userData, "backups"), userData, true)).toBe(
+      "Dieser Ordner gehört zur App. Bitte einen anderen wählen.",
+    );
+    expect(copyFolderRefusal(userData, userData, true)).not.toBeNull();
+    expect(copyFolderRefusal(path.join(os.tmpdir(), "usb"), userData, false)).toBe("In diesen Ordner kann die App nicht schreiben.");
+    expect(copyFolderRefusal(path.join(os.tmpdir(), "Asia To Go 2"), userData, true)).toBeNull();
+  });
+
+  it("removing the second copy defaults to Abbrechen", () => {
+    const d = removeCopyFolderDialog();
+    expect(d.buttons[d.defaultId]).toBe("Abbrechen");
+    expect(d.buttons[d.cancelId]).toBe("Abbrechen");
   });
 
   it("quit while a backup runs: Enter = Warten", () => {

@@ -10,6 +10,7 @@ import { initAutoUpdater } from "./updater";
 import { prismaDir, resourcesRoot } from "./paths";
 import { findFreePort } from "./find-free-port";
 import * as backup from "./backup";
+import { registerBackupIpc } from "./backup-ipc";
 import { migrateClusterToUtf8, recoverEncodingMigration } from "./backup/encoding-migration";
 import { embeddedClusterOps, embeddedPgCtlPath, pgEncodingChecks } from "./backup/encoding-cluster";
 import {
@@ -288,6 +289,8 @@ async function bootFullPipeline(): Promise<void> {
       title: "Asia To Go",
       autoHideMenuBar: true,
       show: false,
+      // backupApi for Einstellungen (files' UX 1.6).
+      webPreferences: { preload: path.join(__dirname, "preload.js") },
     });
     await mainWindow.loadURL(runningServer.url);
     mainWindow.show();
@@ -296,6 +299,7 @@ async function bootFullPipeline(): Promise<void> {
     startSyncPoll(runningServer.url);
     backupRunner = new backup.BackupRunner(backupDeps);
     startBackupSchedule(backupDeps, backupRunner);
+    registerBackupIpc(backupDeps, backupRunner, userDataDir);
   } catch (err) {
     log.error("Failed to start Asia To Go", err);
     splash.close();

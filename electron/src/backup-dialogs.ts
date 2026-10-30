@@ -2,11 +2,12 @@
 // Pure functions, no electron import, so vitest can check every wording.
 // Papa's one-pager quotes these labels word for word: tell files before changing one.
 
+import path from "node:path";
 import type { FailureReason, Manifest } from "./backup/types";
 import { MESSAGE_FAILED } from "./backup/encoding-migration";
 
 export interface DialogSpec {
-  type: "info" | "warning" | "error";
+  type: "info" | "warning" | "error" | "question";
   title: string;
   message: string;
   detail?: string;
@@ -119,6 +120,30 @@ export function encodingFailedDialog(): DialogSpec {
     title: "Asia To Go",
     message: MESSAGE_FAILED,
     buttons: ["Schliessen"],
+    defaultId: 0,
+    cancelId: 0,
+  };
+}
+
+function isInsideDir(child: string, parent: string): boolean {
+  const rel = path.relative(path.resolve(parent), path.resolve(child));
+  return rel === "" || (!rel.startsWith("..") && !path.isAbsolute(rel));
+}
+
+/** 1.5 checks 1 and 2 for a picked second-copy folder; null = accepted. */
+export function copyFolderRefusal(chosen: string, userDataDir: string, writable: boolean): string | null {
+  if (isInsideDir(chosen, userDataDir)) return "Dieser Ordner gehört zur App. Bitte einen anderen wählen.";
+  if (!writable) return "In diesen Ordner kann die App nicht schreiben.";
+  return null;
+}
+
+/** 1.5 [Entfernen]: forgets the setting only, never deletes on the target. */
+export function removeCopyFolderDialog(): DialogSpec {
+  return {
+    type: "question",
+    title: "Asia To Go",
+    message: "Keine zweite Kopie mehr machen? Die Sicherungen im Ordner bleiben dort.",
+    buttons: ["Abbrechen", "Nicht mehr kopieren"],
     defaultId: 0,
     cancelId: 0,
   };

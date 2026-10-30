@@ -1,4 +1,4 @@
-import { app, BrowserWindow, dialog, ipcMain } from "electron";
+import { app, BrowserWindow, clipboard, dialog, ipcMain, shell } from "electron";
 import path from "node:path";
 import log from "electron-log";
 import { startEmbeddedPostgres, RunningPostgres } from "./postgres";
@@ -10,7 +10,17 @@ import { initAutoUpdater } from "./updater";
 import { prismaDir, resourcesRoot } from "./paths";
 import { findFreePort } from "./find-free-port";
 import * as backup from "./backup";
-import { registerBackupIpc } from "./backup-ipc";
+import { registerBackupIpc, restoreDirs } from "./backup-ipc";
+import {
+  R3_DO_NOT_CLOSE,
+  R3_TITLE,
+  REPUBLISH_FAILED,
+  RESTORE_STEPS,
+  restoreOutcome,
+  restoreReport,
+  stepStates,
+  type RestoreAction,
+} from "./restore-screens";
 import { migrateClusterToUtf8, recoverEncodingMigration } from "./backup/encoding-migration";
 import { embeddedClusterOps, embeddedPgCtlPath, pgEncodingChecks } from "./backup/encoding-cluster";
 import {
@@ -18,6 +28,7 @@ import {
   encodingFailedDialog,
   migrateFailedDialog,
   quitWhileBackupDialog,
+  restoreBlockQuitDialog,
   restoredWaitingDialog,
   waitingForFixDialog,
   type DialogSpec,
@@ -29,6 +40,8 @@ let runningServer: RunningServer | null = null;
 let syncPollTimer: NodeJS.Timeout | null = null;
 let backupRunner: backup.BackupRunner | null = null;
 let backupTimer: NodeJS.Timeout | null = null;
+// True from R3 until the R4 screen shows: window close and quit are blocked.
+let restoring = false;
 
 const SYNC_POLL_INTERVAL_MS = 60_000;
 const BACKUP_TICK_INTERVAL_MS = 60 * 60 * 1000;
@@ -106,6 +119,16 @@ function stopSyncPoll(): void {
   }
 }
 
+// After a restore the poll stays off until "Artikel neu senden" (files' UX R4a).
+function startSyncPollUnlessPaused(serverUrl: string): void {
+  const pausedSince = loadConfig().syncPausedAfterRestore;
+  if (pausedSince) {
+    log.info(`[sync] paused since the restore at ${pausedSince}`);
+    return;
+  }
+  if (!syncPollTimer) startSyncPoll(serverUrl);
+}
+
 async function ask(spec: DialogSpec): Promise<number> {
   // noLink: keep real buttons on Windows instead of command links.
   return (await dialog.showMessageBox({ ...spec, noLink: true })).response;
@@ -181,6 +204,123 @@ function stopBackupSchedule(): void {
     clearInterval(backupTimer);
     backupTimer = null;
   }
+}
+
+async function isSyncConfigured(serverUrl: string | undefined): Promise<boolean> {
+  if (!serverUrl) return false;
+  try {
+    const res = await fetch(`${serverUrl}/api/sync/republish`);
+    return res.ok && ((await res.json()) as { configured?: boolean }).configured === true;
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Einstellungen > Daten zurückholen, screens R3/R4 (files' UX #3067 section 2,
+ * storage design 4). R1/R2 run in Next; from here the main window shows
+ * restore.html, because the Next server is stopped while the database is swapped.
+ */
+function registerRestoreIpc(
+  deps: backup.BackupDeps,
+  runner: backup.BackupRunner,
+  databaseUrl: string,
+  offContactEmail: string,
+): void {
+  let answer: ((action: RestoreAction) => void) | null = null;
+  let report = "";
+
+  ipcMain.handle("restore:action", async (_event, action: RestoreAction) => {
+    if (action === "copyReport") return clipboard.writeText(report);
+    if (action === "openFolder") return void (await shell.openPath(deps.backupsRoot));
+    answer?.(action);
+  });
+
+  ipcMain.handle("backup:restore", async (_event, id: string) => {
+    const dir = restoreDirs.get(id);
+    const manifest = dir ? backup.readManifest(dir) : null;
+    const win = mainWindow;
+    if (!dir || !manifest || !win || restoring || runner.busy) return;
+
+    const blockClose = (event: Electron.Event) => {
+      if (!restoring) return;
+      event.preventDefault();
+      void ask(restoreBlockQuitDialog());
+    };
+    const syncConfigured = await isSyncConfigured(runningServer?.url);
+    restoring = true;
+    win.on("close", blockClose);
+    try {
+      await win.loadFile(path.join(__dirname, "restore.html"));
+      const send = (state: unknown) => win.webContents.send("restore:state", state);
+      const progress = (step: backup.RestoreStep) => {
+        const states = stepStates(step);
+        send({
+          phase: "progress",
+          title: R3_TITLE,
+          doNotClose: R3_DO_NOT_CLOSE,
+          steps: RESTORE_STEPS.map((s) => ({ label: s.label, state: states[s.step] })),
+        });
+      };
+
+      stopBackupSchedule();
+      const result = await backup.restoreBackup(deps, dir, {
+        stopApp: async () => {
+          stopSyncPoll();
+          const server = runningServer;
+          runningServer = null;
+          if (server) await server.stop();
+        },
+        runMigrations: () => runMigrations(databaseUrl),
+        onStep: progress,
+      });
+      report = restoreReport(app.getVersion(), dir, result, new Date());
+      if (result.ok) log.info(`[restore] done: ${dir}`);
+      else log.error("[restore] failed", { step: result.step, error: result.error, rolledBack: result.rolledBack });
+
+      const screen = restoreOutcome(result, manifest.createdAt, new Date(), syncConfigured);
+      if (result.ok && syncConfigured) {
+        saveConfig({ ...loadConfig(), syncPausedAfterRestore: new Date().toISOString() });
+      }
+      if (screen.startApp) {
+        if (!runningServer) runningServer = await startNextServer(databaseUrl, offContactEmail);
+        startSyncPollUnlessPaused(runningServer.url);
+        startBackupSchedule(deps, runner);
+      }
+      restoring = false;
+      send({ phase: "result", screen });
+      // restore.fatal: Next stays stopped, only Ordner öffnen / Fehlerbericht work.
+      if (!screen.startApp || !runningServer) return;
+
+      for (;;) {
+        const action = await new Promise<RestoreAction>((resolve) => (answer = resolve));
+        if (action !== "republish") {
+          await win.loadURL(`${runningServer.url}/settings${action === "chooseOther" ? "#zurueckholen" : ""}`);
+          return;
+        }
+        try {
+          const res = await fetch(`${runningServer.url}/api/sync/republish`, { method: "POST" });
+          if (!res.ok) throw new Error(`HTTP ${res.status}`);
+          const config = loadConfig();
+          delete config.syncPausedAfterRestore;
+          saveConfig(config);
+          startSyncPollUnlessPaused(runningServer.url);
+          await win.loadURL(`${runningServer.url}/settings`);
+          return;
+        } catch (err) {
+          log.error("[restore] republish failed", err);
+          send({ phase: "result", screen, notice: REPUBLISH_FAILED });
+        }
+      }
+    } catch (err) {
+      log.error("[restore] unexpected failure", err);
+      showFatalError(err);
+    } finally {
+      answer = null;
+      restoring = false;
+      win.removeListener("close", blockClose);
+    }
+  });
 }
 
 // Fast dev-mode path: point at whatever's already serving the app (pnpm dev,
@@ -296,10 +436,11 @@ async function bootFullPipeline(): Promise<void> {
     mainWindow.show();
     splash.close();
     initAutoUpdater();
-    startSyncPoll(runningServer.url);
+    startSyncPollUnlessPaused(runningServer.url);
     backupRunner = new backup.BackupRunner(backupDeps);
     startBackupSchedule(backupDeps, backupRunner);
     registerBackupIpc(backupDeps, backupRunner, userDataDir);
+    registerRestoreIpc(backupDeps, backupRunner, databaseUrl, config.offContactEmail);
   } catch (err) {
     log.error("Failed to start Asia To Go", err);
     splash.close();
@@ -323,6 +464,11 @@ app.on("window-all-closed", () => {
 let shuttingDown = false;
 
 app.on("before-quit", (event) => {
+  if (restoring) {
+    event.preventDefault();
+    void ask(restoreBlockQuitDialog());
+    return;
+  }
   if (shuttingDown) return;
   shuttingDown = true;
   event.preventDefault();

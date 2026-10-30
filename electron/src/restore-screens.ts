@@ -30,7 +30,7 @@ export function stepStates(current: RestoreStep): Record<RestoreStep, StepState>
 
 export const R3_TITLE = "Daten werden zurückgeholt";
 export const R3_DO_NOT_CLOSE = "PC nicht ausschalten und App nicht schliessen.";
-export const R3_BLOCK_QUIT = "Bitte warten, bis das Zurückholen fertig ist.";
+export const REPUBLISH_FAILED = "Senden hat nicht geklappt. Später in Einstellungen > Website-Abgleich nochmals versuchen.";
 
 export type RestoreAction = "later" | "republish" | "copyReport" | "close" | "openFolder" | "chooseOther";
 

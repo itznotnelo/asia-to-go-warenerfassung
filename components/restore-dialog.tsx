@@ -83,7 +83,9 @@ export function RestoreDialog({ api, copyFolder, onClose }: { api: RestoreApi; c
   async function handleRestore() {
     if (!confirm || !understood) return;
     setStarting(true);
+    // On success main navigates away; resolving here means it refused (busy).
     await api.restore(confirm.choice.id);
+    setStarting(false);
   }
 
   const r2 =

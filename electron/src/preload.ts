@@ -15,4 +15,13 @@ contextBridge.exposeInMainWorld("backupApi", {
   restoreChoices: () => ipcRenderer.invoke("backup:restoreChoices"),
   pickExternalFolder: () => ipcRenderer.invoke("backup:pickExternalFolder"),
   currentCounts: () => ipcRenderer.invoke("backup:currentCounts"),
+  restore: (id: string) => ipcRenderer.invoke("backup:restore", id),
+});
+
+// Restore screens R3/R4 (restore.html): main pushes the state, buttons answer.
+contextBridge.exposeInMainWorld("restoreUi", {
+  onState: (cb: (state: unknown) => void) => {
+    ipcRenderer.on("restore:state", (_event, state) => cb(state));
+  },
+  action: (name: string) => ipcRenderer.invoke("restore:action", name),
 });

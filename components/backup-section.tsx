@@ -66,6 +66,8 @@ export function BackupSection() {
     if (!window.backupApi) return;
     setApi(window.backupApi);
     void refresh(window.backupApi);
+    // R4 "Andere wählen" comes back here to pick another backup.
+    if (window.location.hash === "#zurueckholen") setRestoreOpen(true);
   }, [refresh]);
 
   if (!api || !info) return null;

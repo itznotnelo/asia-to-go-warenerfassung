@@ -149,6 +149,18 @@ export function removeCopyFolderDialog(): DialogSpec {
   };
 }
 
+/** R3: closing while a restore runs is not possible. */
+export function restoreBlockQuitDialog(): DialogSpec {
+  return {
+    type: "warning",
+    title: "Asia To Go",
+    message: "Bitte warten, bis das Zurückholen fertig ist.",
+    buttons: ["OK"],
+    defaultId: 0,
+    cancelId: 0,
+  };
+}
+
 /** 1.4: closing while a backup runs. */
 export function quitWhileBackupDialog(): DialogSpec {
   return {

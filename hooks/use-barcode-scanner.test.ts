@@ -278,6 +278,15 @@ describe("useBarcodeScanner", () => {
       expect(playScanSuccess).toHaveBeenCalledOnce();
     });
 
+    it("reports a UPC-A in its canonical EAN-13 form", () => {
+      const onScan = vi.fn();
+      const { result } = renderHook(() => useBarcodeScanner({ onScan }));
+
+      result.current.submitManualBarcode("036000291452");
+
+      expect(onScan).toHaveBeenCalledWith({ barcode: "0036000291452", valid: true });
+    });
+
     it("ignores empty manual input", () => {
       const onScan = vi.fn();
       const { result } = renderHook(() => useBarcodeScanner({ onScan }));

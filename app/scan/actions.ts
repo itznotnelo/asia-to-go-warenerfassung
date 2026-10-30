@@ -1,7 +1,7 @@
 "use server";
 
 import { prisma } from "@/lib/prisma";
-import { hasValidBarcodeFormat } from "@/lib/barcode";
+import { isValidBarcode, normalizeGtin } from "@/lib/barcode";
 import { fetchOffProduct } from "@/lib/openfoodfacts/client";
 import { mapOffToProduct } from "@/lib/openfoodfacts/mapping";
 import { toProductSummary, type ProductSummary } from "@/lib/product-summary";
@@ -33,9 +33,10 @@ async function logScan(ean: string, result: "existing_product" | "off_hit" | "of
  * ScanLog — das ist die einzige Quelle für die OFF-Trefferquote im
  * Dashboard, deshalb hier und nicht erst beim Speichern loggen.
  */
-export async function lookupBarcode(barcode: string): Promise<LookupResult> {
-  if (!hasValidBarcodeFormat(barcode)) {
-    return { kind: "off-error", ean: barcode };
+export async function lookupBarcode(rawBarcode: string): Promise<LookupResult> {
+  const barcode = normalizeGtin(rawBarcode);
+  if (!barcode || !isValidBarcode(barcode)) {
+    return { kind: "off-error", ean: rawBarcode };
   }
 
   const existing = await prisma.product.findUnique({ where: { ean: barcode } });

@@ -1,6 +1,7 @@
 import { z } from "zod";
 import { VAT_RATES } from "@/lib/pricing";
 import { ALLERGEN_KEYS } from "@/lib/allergens";
+import { isValidBarcode, normalizeGtin } from "@/lib/barcode";
 
 // Server actions are plain POST endpoints, so the UI <select> is not enough to keep 7.7 or 0 out.
 export const vatRateSchema = z.number().refine((rate) => VAT_RATES.includes(rate), "MwSt muss 2.6 % oder 8.1 % sein");
@@ -21,7 +22,12 @@ const allergenListSchema = z
   .default([]);
 
 export const productInputSchema = z.object({
-  ean: z.string().trim().nullable(),
+  ean: z
+    .string()
+    .trim()
+    .nullable()
+    .transform((value) => (value ? (normalizeGtin(value) ?? value) : null))
+    .refine((value) => value === null || isValidBarcode(value), "Ungültiger Barcode (Prüfziffer falsch)"),
   nameDe: z.string().trim().min(1, "Name ist Pflicht"),
   nameOriginal: z.string().trim().optional(),
   brand: z.string().trim().optional(),

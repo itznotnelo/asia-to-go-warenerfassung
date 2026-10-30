@@ -30,6 +30,23 @@ describe("productInputSchema vatRate", () => {
   });
 });
 
+describe("productInputSchema ean", () => {
+  it("stores a UPC-A as its EAN-13 form", () => {
+    expect(productInputSchema.parse({ ...complete, ean: " 036000291452 " }).ean).toBe("0036000291452");
+  });
+
+  it("turns an empty field into null", () => {
+    expect(productInputSchema.parse({ ...complete, ean: "" }).ean).toBeNull();
+    expect(productInputSchema.parse({ ...complete, ean: null }).ean).toBeNull();
+  });
+
+  it.each(["3017620422004", "12345", "30176204a2003"])("rejects %s with a German message", (ean) => {
+    const parsed = productInputSchema.safeParse({ ...complete, ean });
+    expect(parsed.success).toBe(false);
+    expect(parsed.error?.issues[0]?.message).toBe("Ungültiger Barcode (Prüfziffer falsch)");
+  });
+});
+
 describe("productInputSchema priceRappen", () => {
   it("accepts the CHF 10'000 cap itself", () => {
     expect(productInputSchema.safeParse({ ...complete, priceRappen: MAX_PRICE_RAPPEN }).success).toBe(true);

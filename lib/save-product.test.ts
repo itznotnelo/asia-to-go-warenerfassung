@@ -17,7 +17,7 @@ const { applyQuickUpdate, createProduct, DUPLICATE_EAN_ERROR, PRODUCT_NOT_FOUND 
 const { SAVE_FAILED } = await import("./save-error");
 
 const INPUT = {
-  ean: "7612345678904",
+  ean: "7612345678900",
   nameDe: "Mama Instant Noodles",
   categoryId: "cat-noodles",
   priceRappen: 350,

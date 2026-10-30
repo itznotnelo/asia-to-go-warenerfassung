@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useRef } from "react";
-import { isValidBarcode } from "@/lib/barcode";
+import { isValidBarcode, normalizeGtin } from "@/lib/barcode";
 import { playScanError, playScanSuccess } from "@/lib/scan-feedback";
 
 // Ein USB-Handscanner verhält sich wie eine sehr schnelle Tastatur: Ziffern
@@ -68,7 +68,9 @@ function restoreFieldValue(field: TextField, value: string, selectionStart: numb
   }
 }
 
-function reportScan(onScan: (result: ScanResult) => void, barcode: string, feedback = true) {
+function reportScan(onScan: (result: ScanResult) => void, raw: string, feedback = true) {
+  // Canonical GTIN (UPC-A -> EAN-13), so one product never gets two spellings.
+  const barcode = normalizeGtin(raw) ?? raw;
   const valid = isValidBarcode(barcode);
   if (feedback) {
     if (valid) {

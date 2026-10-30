@@ -4,7 +4,7 @@ import type { ProductExportRow } from "@/lib/product-export";
 const ROW: ProductExportRow = {
   id: "p1",
   sku: "ASIA-00001",
-  ean: "7612345678904",
+  ean: "7612345678900",
   nameDe: "Reisnudeln",
   nameOriginal: "",
   nameEn: "",

@@ -36,6 +36,7 @@ import {
 import { migrateClusterToUtf8, recoverEncodingMigration } from "./backup/encoding-migration";
 import { embeddedClusterOps, embeddedPgCtlPath, pgEncodingChecks } from "./backup/encoding-cluster";
 import { embeddedPostgresSecurityOptions } from "./db-credential";
+import { applyWindowSecurity, secureWebPreferences } from "./window-security";
 import {
   blockedDialog,
   encodingFailedDialog,
@@ -82,7 +83,9 @@ function createSplashWindow(): BrowserWindow {
     resizable: false,
     title: "Asia To Go",
     autoHideMenuBar: true,
+    webPreferences: secureWebPreferences(),
   });
+  applyWindowSecurity(win);
   win.loadFile(path.join(__dirname, "splash.html"));
   return win;
 }
@@ -100,8 +103,9 @@ function promptForOffContactEmail(): Promise<string> {
       resizable: false,
       title: "Asia To Go — Einrichtung",
       autoHideMenuBar: true,
-      webPreferences: { preload: path.join(__dirname, "preload.js") },
+      webPreferences: secureWebPreferences({ preload: path.join(__dirname, "preload.js") }),
     });
+    applyWindowSecurity(win);
     win.loadFile(path.join(__dirname, "setup-prompt.html"));
 
     ipcMain.handleOnce("setup:submit", (_event, email: string) => {
@@ -119,10 +123,17 @@ function showFatalError(err: unknown, kind: FatalKind = "boot"): void {
     return;
   }
   const logPath = log.transports.file.getFile().path;
-  const win = new BrowserWindow({ width: 680, height: 460, autoHideMenuBar: true, title: "Asia To Go" });
+  const win = new BrowserWindow({
+    width: 680,
+    height: 460,
+    autoHideMenuBar: true,
+    title: "Asia To Go",
+    webPreferences: secureWebPreferences(),
+  });
   fatalWindow = win;
   win.on("closed", () => (fatalWindow = null));
-  win.webContents.setWindowOpenHandler(() => ({ action: "deny" }));
+  // Blocks every navigation; the listener below turns the two links into actions.
+  applyWindowSecurity(win);
   win.webContents.on("will-navigate", (event, url) => {
     event.preventDefault();
     const action = fatalActionFromUrl(url);
@@ -416,8 +427,10 @@ async function bootDevMode(): Promise<void> {
     height: 860,
     title: "Asia To Go",
     autoHideMenuBar: true,
+    webPreferences: secureWebPreferences(),
   });
   const url = process.env.ASIA_SHOP_URL ?? "http://localhost:3000";
+  applyWindowSecurity(mainWindow, url);
   await mainWindow.loadURL(url);
   startSyncPoll(url);
 }
@@ -531,8 +544,9 @@ async function bootFullPipeline(): Promise<void> {
       autoHideMenuBar: true,
       show: false,
       // backupApi for Einstellungen (files' UX 1.6).
-      webPreferences: { preload: path.join(__dirname, "preload.js") },
+      webPreferences: secureWebPreferences({ preload: path.join(__dirname, "preload.js") }),
     });
+    applyWindowSecurity(mainWindow, () => runningServer?.url);
     await mainWindow.loadURL(runningServer.url);
     // After the first load: a later load failing means the server is gone.
     mainWindow.webContents.on("did-fail-load", (_event, errorCode, errorDescription, url, isMainFrame) => {

@@ -74,6 +74,20 @@ describe("applyWindowSecurity", () => {
     expect(w.blocked("will-redirect", `${appUrl}/products`)).toBe(false);
   });
 
+  it("follows the server to its new port when given a getter (restore restarts Next)", () => {
+    const w = fakeWindow();
+    let current: string | undefined = appUrl;
+    applyWindowSecurity(w.win, () => current);
+    expect(w.blocked("will-navigate", `${appUrl}/settings`)).toBe(false);
+
+    current = "http://127.0.0.1:51300";
+    expect(w.blocked("will-navigate", "http://127.0.0.1:51300/settings")).toBe(false);
+    expect(w.blocked("will-navigate", `${appUrl}/settings`)).toBe(true);
+
+    current = undefined;
+    expect(w.blocked("will-navigate", "http://127.0.0.1:51300/settings")).toBe(true);
+  });
+
   it("blocks all navigation for a file-loaded window without appUrl", () => {
     const w = fakeWindow();
     applyWindowSecurity(w.win);

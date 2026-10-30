@@ -47,4 +47,11 @@ describe("updateShopSyncSettings", () => {
     await expect(updateShopSyncSettings({ apiUrl: 1 })).resolves.toEqual({ ok: false, message: "Bitte Eingaben prüfen." });
     expect(saveShopSyncSettingsMock).not.toHaveBeenCalled();
   });
+
+  it("refuses a plain http backend URL with the German reason (#3071)", async () => {
+    await expect(
+      updateShopSyncSettings({ apiUrl: "http://atg-shop.example.workers.dev", deviceId: "shop-pc", deviceKey: "" }),
+    ).resolves.toEqual({ ok: false, message: "Nur https-Adressen erlaubt" });
+    expect(saveShopSyncSettingsMock).not.toHaveBeenCalled();
+  });
 });

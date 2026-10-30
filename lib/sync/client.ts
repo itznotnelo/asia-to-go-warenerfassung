@@ -1,5 +1,6 @@
 import "server-only";
 import type { PublishOp, ShopSyncSettingsValue } from "./types";
+import { parseUploadResponse } from "./validate";
 
 // A hung backend call would otherwise hold the single-flight sync pass
 // (runner.ts) forever and stall every later sync. Uploads get more time
@@ -64,8 +65,8 @@ export async function uploadImageToBackend(
   if (!response.ok) {
     throw new Error(`image upload failed: HTTP ${response.status}`);
   }
-  const data = (await response.json()) as { r2Key: string };
-  return data.r2Key;
+  // The key is published to the webshop, so it has to look like one the backend builds (#3071).
+  return parseUploadResponse(await response.json(), productId);
 }
 
 /**

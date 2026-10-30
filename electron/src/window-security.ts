@@ -37,13 +37,18 @@ function originOf(url: string): string | null {
 /**
  * Locks a window to `appUrl`'s origin. Call right after creating the window,
  * before loadURL/loadFile. Without `appUrl` (splash/setup/error windows that
- * load a local file) every navigation is blocked.
+ * load a local file) every navigation is blocked. Pass a getter when the
+ * server can move: a restore restarts Next on a new free port.
  */
-export function applyWindowSecurity(win: BrowserWindow, appUrl?: string): void {
-  const allowedOrigin = appUrl ? originOf(appUrl) : null;
+export function applyWindowSecurity(win: BrowserWindow, appUrl?: string | (() => string | undefined)): void {
+  const currentAppUrl = typeof appUrl === "function" ? appUrl : () => appUrl;
   const contents = win.webContents;
 
-  const isAllowed = (url: string): boolean => allowedOrigin !== null && originOf(url) === allowedOrigin;
+  const isAllowed = (url: string): boolean => {
+    const current = currentAppUrl();
+    const allowedOrigin = current ? originOf(current) : null;
+    return allowedOrigin !== null && originOf(url) === allowedOrigin;
+  };
 
   contents.setWindowOpenHandler(() => ({ action: "deny" }));
 

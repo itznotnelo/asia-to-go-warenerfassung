@@ -78,15 +78,6 @@ export default async function DashboardPage() {
           ))}
         </div>
       </section>
-
-      <section className="flex gap-3 text-sm">
-        <a href="/api/export?format=json" className="text-primary hover:underline">
-          Export JSON
-        </a>
-        <a href="/api/export?format=csv" className="text-primary hover:underline">
-          Export CSV
-        </a>
-      </section>
     </div>
   );
 }

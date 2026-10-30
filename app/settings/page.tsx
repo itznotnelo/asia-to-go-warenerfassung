@@ -15,6 +15,18 @@ export default async function SettingsPage() {
     <div className="mx-auto flex w-full max-w-xl flex-col gap-6 px-4 py-10">
       <h1 className="text-xl font-semibold">Einstellungen</h1>
       <BackupSection />
+      {/* Not a backup, so kept apart from Datensicherung and closed by default (files' UX 1.1). */}
+      <details className="text-sm">
+        <summary className="cursor-pointer text-muted-foreground">Weitere Exporte</summary>
+        <div className="mt-2 flex gap-3">
+          <a href="/api/export?format=json" className="text-primary hover:underline">
+            Export JSON
+          </a>
+          <a href="/api/export?format=csv" className="text-primary hover:underline">
+            Export CSV
+          </a>
+        </div>
+      </details>
       <h2 className="text-lg font-semibold">Website-Abgleich</h2>
       <p className="text-sm text-muted-foreground">
         Verbindung zum Cloudflare-Backend des Online-Shops (asia-2go.ch). Die Geräte-ID und der

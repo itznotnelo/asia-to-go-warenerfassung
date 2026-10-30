@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   CRASH_BUDGET_RESET_MS,
+  createBootGate,
   createErrorThrottle,
   crashDecision,
   errorDetails,
@@ -150,5 +151,43 @@ describe("updater helpers (should 22)", () => {
     await expect(slow).resolves.toBe("fallback");
     await expect(withTimeout(Promise.reject(new Error("x")), 1000, "fb")).resolves.toBe("fb");
     await expect(withTimeout(Promise.resolve("ok"), 1000, "fb")).resolves.toBe("ok");
+  });
+});
+
+describe("update dialog boot gate (review of 3134)", () => {
+  it("holds the dialog while the boot (and its migrations) runs", () => {
+    const gate = createBootGate();
+    const show = vi.fn();
+    gate.whenBootDone(show);
+    expect(show).not.toHaveBeenCalled();
+    gate.markBootDone();
+    expect(show).toHaveBeenCalledTimes(1);
+  });
+
+  it("shows right away once the boot is done", () => {
+    const gate = createBootGate();
+    gate.markBootDone();
+    const show = vi.fn();
+    gate.whenBootDone(show);
+    expect(show).toHaveBeenCalledTimes(1);
+  });
+
+  it("keeps only the latest held request and runs it once", () => {
+    const gate = createBootGate();
+    const first = vi.fn();
+    const second = vi.fn();
+    gate.whenBootDone(first);
+    gate.whenBootDone(second);
+    gate.markBootDone();
+    gate.markBootDone();
+    expect(first).not.toHaveBeenCalled();
+    expect(second).toHaveBeenCalledTimes(1);
+  });
+
+  it("never shows when the boot never finishes", () => {
+    const gate = createBootGate();
+    const show = vi.fn();
+    gate.whenBootDone(show);
+    expect(show).not.toHaveBeenCalled();
   });
 });

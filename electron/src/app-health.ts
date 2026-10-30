@@ -167,6 +167,28 @@ export function updateFeedOverride(env: Record<string, string | undefined>): str
   }
 }
 
+// The "Jetzt neu starten" dialog must not show while the boot is still in
+// encoding recovery, UTF8 migration, backup-before-migrate or prisma migrate:
+// accepting it quits and stops Postgres mid-migration. whenBootDone holds the
+// latest request until markBootDone, then runs it once.
+export function createBootGate() {
+  let done = false;
+  let pending: (() => void) | null = null;
+  return {
+    whenBootDone(fn: () => void): void {
+      if (done) fn();
+      else pending = fn;
+    },
+    markBootDone(): void {
+      if (done) return;
+      done = true;
+      const fn = pending;
+      pending = null;
+      fn?.();
+    },
+  };
+}
+
 export function withTimeout<T>(promise: Promise<T>, ms: number, fallback: T): Promise<T> {
   return new Promise((resolve) => {
     const timer = setTimeout(() => resolve(fallback), ms);

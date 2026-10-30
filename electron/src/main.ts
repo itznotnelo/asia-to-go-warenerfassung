@@ -6,7 +6,7 @@ import { runMigrations } from "./migrate";
 import { seedCategoriesIfEmpty } from "./seed-categories";
 import { startNextServer, RunningServer } from "./server";
 import { loadConfig, saveConfig } from "./config";
-import { initAutoUpdater, installUpdateInsteadOfQuit } from "./updater";
+import { initAutoUpdater, installUpdateInsteadOfQuit, markBootDone } from "./updater";
 import {
   createErrorThrottle,
   crashDecision,
@@ -541,6 +541,7 @@ async function bootFullPipeline(): Promise<void> {
     });
     mainWindow.show();
     splash.close();
+    markBootDone();
     const pg = runningPostgres;
     if (pg) {
       stopPostgresWatch = watchLiveness({

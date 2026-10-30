@@ -1,9 +1,10 @@
 import { app, dialog } from "electron";
 import log from "electron-log";
 import { autoUpdater, type UpdateCheckResult } from "electron-updater";
-import { UPDATE_CHECK_INTERVAL_MS, updateFeedOverride, withTimeout } from "./app-health";
+import { UPDATE_CHECK_INTERVAL_MS, createBootGate, updateFeedOverride, withTimeout } from "./app-health";
 
 let started = false;
+const bootGate = createBootGate();
 let lastCheck: Promise<UpdateCheckResult | null> | null = null;
 // Set when a failed boot waits for a fix: install silently, no "Später" dialog.
 let installingAfterFailedBoot = false;
@@ -37,21 +38,25 @@ export function initAutoUpdater(): void {
     log.warn("Ignoring ASIA_SHOP_UPDATE_FEED_URL: only https feeds are allowed");
   }
 
+  // Held until the main window shows, so it can't interrupt a migration. A
+  // boot that never finishes never shows it; the update then installs on quit.
   autoUpdater.on("update-downloaded", () => {
-    if (installingAfterFailedBoot) return;
-    dialog
-      .showMessageBox({
-        type: "info",
-        title: "Asia To Go",
-        message: "Eine neue Version ist bereit.",
-        detail: "Jetzt neu starten, um sie zu installieren?",
-        buttons: ["Jetzt neu starten", "Später"],
-        defaultId: 0,
-        cancelId: 1,
-      })
-      .then((result) => {
-        if (result.response === 0) autoUpdater.quitAndInstall();
-      });
+    bootGate.whenBootDone(() => {
+      if (installingAfterFailedBoot) return;
+      dialog
+        .showMessageBox({
+          type: "info",
+          title: "Asia To Go",
+          message: "Eine neue Version ist bereit.",
+          detail: "Jetzt neu starten, um sie zu installieren?",
+          buttons: ["Jetzt neu starten", "Später"],
+          defaultId: 0,
+          cancelId: 1,
+        })
+        .then((result) => {
+          if (result.response === 0) autoUpdater.quitAndInstall();
+        });
+    });
   });
 
   autoUpdater.on("error", (err) => {
@@ -61,6 +66,12 @@ export function initAutoUpdater(): void {
   checkNow();
   // A PC that keeps the app open for days still sees new releases.
   setInterval(checkNow, UPDATE_CHECK_INTERVAL_MS).unref();
+}
+
+// Called by main.ts once the main window shows: DB migrations are over, a
+// downloaded update may now ask for a restart.
+export function markBootDone(): void {
+  bootGate.markBootDone();
 }
 
 const CHECK_WAIT_MS = 30_000;

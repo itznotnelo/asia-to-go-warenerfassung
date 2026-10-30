@@ -117,3 +117,62 @@ describe("buildProductOp", () => {
     expect(op.product.nutrition).toBeNull();
   });
 });
+
+// Everything that leaves the device for the shop backend (review should #37).
+// A new field has to be added here on purpose; internal data never goes.
+const PUBLISH_PRODUCT_KEYS = [
+  "allergens",
+  "brand",
+  "categoryId",
+  "contentAmount",
+  "contentUnit",
+  "dataComplete",
+  "ean",
+  "id",
+  "images",
+  "ingredientsDe",
+  "isAvailable",
+  "nameDe",
+  "nameEn",
+  "nameOriginal",
+  "nutrition",
+  "originCountry",
+  "priceRappen",
+  "sku",
+  "storageType",
+  "unitType",
+  "updatedAt",
+  "vatRate",
+];
+
+const PUBLISH_IMAGE_KEYS = ["height", "id", "r2Key", "sortOrder", "sourceAttribution", "type", "width"];
+
+describe("buildProductOp payload allowlist", () => {
+  const note = "Einkauf CHF 1.20 bei Lieferant X, Marge tief";
+  const images: ImageForSync[] = [
+    { id: "img_1", type: "front", r2Key: "products/prod_1/front-1.jpg", width: 100, height: 100, sortOrder: 0, sourceAttribution: null },
+  ];
+
+  function publishedProduct() {
+    const op = buildProductOp(makeProduct({ notes: note, stockQty: 42 }), images);
+    if (op.op !== "upsert") throw new Error("expected upsert");
+    return op.product;
+  }
+
+  it("sends exactly the allowlisted product keys", () => {
+    expect(Object.keys(publishedProduct()).sort()).toEqual(PUBLISH_PRODUCT_KEYS);
+  });
+
+  it("sends exactly the allowlisted image keys", () => {
+    for (const image of publishedProduct().images) {
+      expect(Object.keys(image).sort()).toEqual(PUBLISH_IMAGE_KEYS);
+    }
+  });
+
+  it("never puts the internal note or the stock count on the wire", () => {
+    const wire = JSON.stringify(buildProductOp(makeProduct({ notes: note, stockQty: 42 }), images));
+    expect(wire).not.toContain(note);
+    expect(wire).not.toContain('"notes"');
+    expect(wire).not.toContain('"stockQty"');
+  });
+});

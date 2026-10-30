@@ -3,12 +3,12 @@
 import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import { inputClass } from "@/lib/input-class";
-import type { ShopSyncSettingsValue } from "@/lib/sync/types";
+import type { ShopSyncSettingsView } from "@/lib/sync/types";
 import type { SyncRunResult } from "@/lib/sync/runner";
 import { syncAllNow, syncNow, updateShopSyncSettings } from "./actions";
 
 interface SettingsFormProps {
-  initialSettings: ShopSyncSettingsValue;
+  initialSettings: ShopSyncSettingsView;
   initialPendingCount: number;
   initialStuckCount: number;
 }
@@ -34,7 +34,9 @@ function stuckRowsNotice(count: number): string {
 export function SettingsForm({ initialSettings, initialPendingCount, initialStuckCount }: SettingsFormProps) {
   const [apiUrl, setApiUrl] = useState(initialSettings.apiUrl);
   const [deviceId, setDeviceId] = useState(initialSettings.deviceId);
-  const [deviceKey, setDeviceKey] = useState(initialSettings.deviceKey);
+  // The stored key never reaches the browser; an empty field keeps it (review should #38).
+  const [deviceKey, setDeviceKey] = useState("");
+  const [hasDeviceKey, setHasDeviceKey] = useState(initialSettings.hasDeviceKey);
   const [saving, setSaving] = useState(false);
   const [syncing, setSyncing] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
@@ -48,6 +50,10 @@ export function SettingsForm({ initialSettings, initialPendingCount, initialStuc
     const result = await updateShopSyncSettings({ apiUrl, deviceId, deviceKey });
     setSaving(false);
     setMessage(result.ok ? "Gespeichert." : result.message);
+    if (result.ok && deviceKey !== "") {
+      setHasDeviceKey(true);
+      setDeviceKey("");
+    }
   }
 
   async function handleSync(all: boolean) {
@@ -82,6 +88,8 @@ export function SettingsForm({ initialSettings, initialPendingCount, initialStuc
             value={deviceKey}
             onChange={(e) => setDeviceKey(e.target.value)}
             type="password"
+            autoComplete="off"
+            placeholder={hasDeviceKey ? "Schlüssel gesetzt (leer lassen = unverändert)" : ""}
             className={inputClass() + " font-numeric"}
           />
         </label>

@@ -5,10 +5,12 @@ import { getShopSyncSettings, saveShopSyncSettings } from "@/lib/sync/settings";
 import { countPendingOutbox, enqueueAllProductsSync } from "@/lib/sync/outbox";
 import { countStuckOutbox, retryStuckOutbox } from "@/lib/sync/drain";
 import { runSyncPass, type SyncRunResult } from "@/lib/sync/runner";
-import type { ShopSyncSettingsValue } from "@/lib/sync/types";
+import { resolveDeviceKey, toShopSyncSettingsView, type ShopSyncSettingsView } from "@/lib/sync/types";
 
-export async function loadShopSyncSettings(): Promise<ShopSyncSettingsValue> {
-  return getShopSyncSettings();
+// A server action is callable by anything that can POST to the app, so this
+// returns the view without the key (review should #38).
+export async function loadShopSyncSettings(): Promise<ShopSyncSettingsView> {
+  return toShopSyncSettingsView(await getShopSyncSettings());
 }
 
 export async function loadPendingOutboxCount(): Promise<number> {
@@ -32,7 +34,11 @@ export async function updateShopSyncSettings(
   if (!parsed.success) {
     return { ok: false, message: "Bitte Eingaben prüfen." };
   }
-  await saveShopSyncSettings(parsed.data);
+  const stored = await getShopSyncSettings();
+  await saveShopSyncSettings({
+    ...parsed.data,
+    deviceKey: resolveDeviceKey(parsed.data.deviceKey, stored.deviceKey),
+  });
   return { ok: true };
 }
 

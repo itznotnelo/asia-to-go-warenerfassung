@@ -131,9 +131,8 @@ export function buildProductOp(product: ProductForSync, images: ImageForSync[]):
     allergens: product.allergens,
     nutrition: product.nutrition ?? null,
     isAvailable: product.isAvailable,
-    stockQty: product.stockQty,
+    // notes and stockQty stay on the device (review should #37, see types.ts).
     dataComplete: product.dataComplete,
-    notes: product.notes,
     updatedAt: product.updatedAt.toISOString(),
     images: imagesReadyForSync(images).map((image) => ({
       id: image.id,

@@ -2,10 +2,23 @@
 // Web Audio API, keine Sounddateien. Nur im Browser aktiv; in Tests (jsdom,
 // SSR) fehlt AudioContext und die Funktionen sind No-Ops.
 
+// One context for the whole session: browsers cap the number of live
+// AudioContexts, so creating one per scan made the beep go silent after a while.
+let sharedContext: AudioContext | undefined;
+
 function getAudioContext(): AudioContext | undefined {
   if (typeof window === "undefined") return undefined;
-  const Ctor = window.AudioContext ?? (window as unknown as { webkitAudioContext?: typeof AudioContext }).webkitAudioContext;
-  return Ctor ? new Ctor() : undefined;
+  if (!sharedContext || sharedContext.state === "closed") {
+    const Ctor = window.AudioContext ?? (window as unknown as { webkitAudioContext?: typeof AudioContext }).webkitAudioContext;
+    if (!Ctor) return undefined;
+    sharedContext = new Ctor();
+  }
+  // Autoplay policy or an idle laptop can suspend the context; tones scheduled
+  // while suspended play as soon as it resumes.
+  if (sharedContext.state === "suspended") {
+    sharedContext.resume().catch(() => {});
+  }
+  return sharedContext;
 }
 
 function playTone(ctx: AudioContext, frequency: number, startTime: number, durationSeconds: number) {

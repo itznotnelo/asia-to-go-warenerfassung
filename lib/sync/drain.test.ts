@@ -5,15 +5,24 @@ const syncOutboxMock = {
   findMany: vi.fn(),
   deleteMany: vi.fn(),
   updateMany: vi.fn(),
+  count: vi.fn(),
 };
 
 vi.mock("@/lib/prisma", () => ({ prisma: { syncOutbox: syncOutboxMock } }));
 vi.mock("server-only", () => ({}));
 
 const publishOpsMock = vi.fn();
-vi.mock("./client", () => ({ publishOps: publishOpsMock }));
+class SyncHttpError extends Error {
+  readonly status: number;
+  constructor(message: string, status: number) {
+    super(message);
+    this.status = status;
+  }
+}
+vi.mock("./client", () => ({ publishOps: publishOpsMock, SyncHttpError }));
 
-const { drainOutbox, partitionForDrain, unchangedSince } = await import("./drain");
+const { drainOutbox, isPermanentFailure, MAX_ATTEMPTS, retryStuckOutbox, sortForPublish, unchangedSince } =
+  await import("./drain");
 
 const T0 = new Date("2026-10-30T08:00:00.000Z");
 
@@ -27,27 +36,16 @@ beforeEach(() => {
   syncOutboxMock.findMany.mockReset();
   syncOutboxMock.deleteMany.mockReset().mockResolvedValue({ count: 0 });
   syncOutboxMock.updateMany.mockReset().mockResolvedValue({ count: 0 });
+  syncOutboxMock.count.mockReset().mockResolvedValue(0);
   publishOpsMock.mockReset();
 });
 
-describe("partitionForDrain", () => {
-  it("drops rows that already failed 8 times, keeps the rest", () => {
-    const fresh = row({ id: "fresh", attempts: 0 });
-    const exhausted = row({ id: "exhausted", attempts: 8 });
-
-    const { toSend, toDrop } = partitionForDrain([fresh, exhausted]);
-
-    expect(toSend.map((r) => r.id)).toEqual(["fresh"]);
-    expect(toDrop.map((r) => r.id)).toEqual(["exhausted"]);
-  });
-
-  it("orders categories before products within the send list", () => {
+describe("sortForPublish", () => {
+  it("orders categories before products", () => {
     const product = row({ id: "p", entityType: "product" });
     const category = row({ id: "c", entityType: "category" });
 
-    const { toSend } = partitionForDrain([product, category]);
-
-    expect(toSend.map((r) => r.id)).toEqual(["c", "p"]);
+    expect(sortForPublish([product, category]).map((r) => r.id)).toEqual(["c", "p"]);
   });
 });
 
@@ -64,6 +62,23 @@ describe("unchangedSince", () => {
   });
 });
 
+describe("isPermanentFailure", () => {
+  it("counts only a 4xx the backend would repeat", () => {
+    expect(isPermanentFailure(new SyncHttpError("x", 400))).toBe(true);
+    expect(isPermanentFailure(new SyncHttpError("x", 401))).toBe(true);
+    expect(isPermanentFailure(new SyncHttpError("x", 422))).toBe(true);
+  });
+
+  it("treats no internet, timeouts, 5xx, 408 and 429 as temporary", () => {
+    expect(isPermanentFailure(new TypeError("fetch failed"))).toBe(false);
+    expect(isPermanentFailure(new DOMException("timed out", "TimeoutError"))).toBe(false);
+    expect(isPermanentFailure(new SyncHttpError("x", 500))).toBe(false);
+    expect(isPermanentFailure(new SyncHttpError("x", 503))).toBe(false);
+    expect(isPermanentFailure(new SyncHttpError("x", 408))).toBe(false);
+    expect(isPermanentFailure(new SyncHttpError("x", 429))).toBe(false);
+  });
+});
+
 describe("drainOutbox", () => {
   it("skips the network call entirely when settings are incomplete", async () => {
     const result = await drainOutbox({ apiUrl: "", deviceId: "", deviceKey: "" });
@@ -72,13 +87,21 @@ describe("drainOutbox", () => {
     expect(syncOutboxMock.findMany).not.toHaveBeenCalled();
   });
 
+  it("reads only rows that are not stuck", async () => {
+    syncOutboxMock.findMany.mockResolvedValue([]);
+
+    await drainOutbox(settings);
+
+    expect(syncOutboxMock.findMany).toHaveBeenCalledWith(expect.objectContaining({ where: { attempts: { lt: MAX_ATTEMPTS } } }));
+  });
+
   it("publishes the batch and clears the sent rows on success", async () => {
     syncOutboxMock.findMany.mockResolvedValue([row({ id: "a" }), row({ id: "b" })]);
     publishOpsMock.mockResolvedValue(undefined);
 
     const result = await drainOutbox(settings);
 
-    expect(result).toEqual({ sent: 2, dropped: 0, failed: 0, skippedNoSettings: false });
+    expect(result).toEqual({ sent: 2, stuck: 0, failed: 0, skippedNoSettings: false });
     expect(publishOpsMock).toHaveBeenCalledWith(settings, [row({ id: "a" }).payload, row({ id: "b" }).payload]);
     expect(syncOutboxMock.deleteMany).toHaveBeenCalledWith({
       where: { OR: [{ id: "a", updatedAt: T0 }, { id: "b", updatedAt: T0 }] },
@@ -109,28 +132,78 @@ describe("drainOutbox", () => {
     expect(table[0].payload).toEqual({ op: "delete", id: "v2" });
   });
 
-  it("increments attempts only on the rows it read, without deleting them", async () => {
+  it("on a network failure records the error but leaves attempts alone", async () => {
     syncOutboxMock.findMany.mockResolvedValue([row({ id: "a" })]);
-    publishOpsMock.mockRejectedValue(new Error("network down"));
+    publishOpsMock.mockRejectedValue(new TypeError("fetch failed"));
 
     const result = await drainOutbox(settings);
 
-    expect(result).toEqual({ sent: 0, dropped: 0, failed: 1, skippedNoSettings: false });
+    expect(result).toEqual({ sent: 0, stuck: 0, failed: 1, skippedNoSettings: false });
     expect(syncOutboxMock.updateMany).toHaveBeenCalledWith({
       where: { OR: [{ id: "a", updatedAt: T0 }] },
-      data: { attempts: { increment: 1 }, lastError: expect.stringContaining("network down") },
+      data: { lastError: expect.stringContaining("fetch failed") },
     });
     expect(syncOutboxMock.deleteMany).not.toHaveBeenCalled();
   });
 
-  it("drops exhausted rows even when the remaining batch still fails", async () => {
-    syncOutboxMock.findMany.mockResolvedValue([row({ id: "exhausted", attempts: 8 }), row({ id: "fresh" })]);
-    publishOpsMock.mockRejectedValue(new Error("boom"));
+  it("increments attempts on a rejected publish (4xx)", async () => {
+    syncOutboxMock.findMany.mockResolvedValue([row({ id: "a" })]);
+    publishOpsMock.mockRejectedValue(new SyncHttpError("publish failed: HTTP 400", 400));
+
+    await drainOutbox(settings);
+
+    expect(syncOutboxMock.updateMany).toHaveBeenCalledWith({
+      where: { OR: [{ id: "a", updatedAt: T0 }] },
+      data: { attempts: { increment: 1 }, lastError: expect.stringContaining("HTTP 400") },
+    });
+  });
+
+  it("keeps every queued op, deletes included, through a long offline stretch (must 5)", async () => {
+    // In-memory outbox: 20 failed passes (20 min of the 60 s poll) with no internet.
+    const table = [
+      row({ id: "del", payload: { op: "delete", id: "prod_gone" } }),
+      row({ id: "cat", entityType: "category", payload: { op: "delete", id: "cat_1" } }),
+    ];
+    syncOutboxMock.findMany.mockImplementation(async () => table.filter((r) => r.attempts < MAX_ATTEMPTS));
+    syncOutboxMock.updateMany.mockImplementation(async ({ data }: { data: { attempts?: { increment: number } } }) => {
+      for (const r of table) r.attempts += data.attempts?.increment ?? 0;
+      return { count: table.length };
+    });
+    publishOpsMock.mockRejectedValue(new TypeError("fetch failed"));
+
+    for (let pass = 0; pass < 20; pass++) await drainOutbox(settings);
+
+    expect(syncOutboxMock.deleteMany).not.toHaveBeenCalled();
+    expect(table.map((r) => [r.id, r.attempts])).toEqual([
+      ["del", 0],
+      ["cat", 0],
+    ]);
+
+    // Internet is back: the next pass sends both.
+    publishOpsMock.mockResolvedValue(undefined);
+    const result = await drainOutbox(settings);
+    expect(result.sent).toBe(2);
+  });
+
+  it("never deletes stuck rows and reports how many there are", async () => {
+    syncOutboxMock.findMany.mockResolvedValue([]);
+    syncOutboxMock.count.mockResolvedValue(3);
 
     const result = await drainOutbox(settings);
 
-    expect(result.dropped).toBe(1);
-    expect(result.failed).toBe(1);
-    expect(syncOutboxMock.deleteMany).toHaveBeenCalledWith({ where: { OR: [{ id: "exhausted", updatedAt: T0 }] } });
+    expect(result).toEqual({ sent: 0, stuck: 3, failed: 0, skippedNoSettings: false });
+    expect(syncOutboxMock.count).toHaveBeenCalledWith({ where: { attempts: { gte: MAX_ATTEMPTS } } });
+    expect(syncOutboxMock.deleteMany).not.toHaveBeenCalled();
+  });
+});
+
+describe("retryStuckOutbox", () => {
+  it("resets attempts on stuck rows only", async () => {
+    await retryStuckOutbox();
+
+    expect(syncOutboxMock.updateMany).toHaveBeenCalledWith({
+      where: { attempts: { gte: MAX_ATTEMPTS } },
+      data: { attempts: 0 },
+    });
   });
 });

@@ -3,6 +3,7 @@
 import { z } from "zod";
 import { getShopSyncSettings, saveShopSyncSettings } from "@/lib/sync/settings";
 import { countPendingOutbox, enqueueAllProductsSync } from "@/lib/sync/outbox";
+import { countStuckOutbox, retryStuckOutbox } from "@/lib/sync/drain";
 import { runSyncPass, type SyncRunResult } from "@/lib/sync/runner";
 import type { ShopSyncSettingsValue } from "@/lib/sync/types";
 
@@ -12,6 +13,10 @@ export async function loadShopSyncSettings(): Promise<ShopSyncSettingsValue> {
 
 export async function loadPendingOutboxCount(): Promise<number> {
   return countPendingOutbox();
+}
+
+export async function loadStuckOutboxCount(): Promise<number> {
+  return countStuckOutbox();
 }
 
 const settingsSchema = z.object({
@@ -36,8 +41,9 @@ export async function syncNow(): Promise<SyncRunResult> {
   return runSyncPass();
 }
 
-/** "Alles synchronisieren": re-queues every product first, regardless of whether it changed, then drains. */
+/** "Alles synchronisieren": re-queues every product first, regardless of whether it changed, gives stuck rows another try, then drains. */
 export async function syncAllNow(): Promise<SyncRunResult> {
   await enqueueAllProductsSync();
+  await retryStuckOutbox();
   return runSyncPass();
 }

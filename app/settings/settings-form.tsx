@@ -10,18 +10,23 @@ import { syncAllNow, syncNow, updateShopSyncSettings } from "./actions";
 interface SettingsFormProps {
   initialSettings: ShopSyncSettingsValue;
   initialPendingCount: number;
+  initialStuckCount: number;
 }
 
 function describeResult(result: SyncRunResult): string {
   if (result.skippedNoSettings) return "Keine Verbindung eingerichtet.";
   const parts = [`${result.sent} veröffentlicht`];
-  if (result.dropped > 0) parts.push(`${result.dropped} verworfen (zu oft fehlgeschlagen)`);
   if (result.failed > 0) parts.push(`${result.failed} fehlgeschlagen, wird erneut versucht`);
   if (result.ordersImported > 0) parts.push(`${result.ordersImported} neue Bestellung(en) abgeholt`);
   return parts.join(" · ");
 }
 
-export function SettingsForm({ initialSettings, initialPendingCount }: SettingsFormProps) {
+// Rejected ops are kept, never silently deleted (review must 5).
+function stuckRowsNotice(count: number): string {
+  return `Die Website lehnt ${count} ${count === 1 ? "Änderung" : "Änderungen"} ab. «Alles synchronisieren» versucht es nochmals.`;
+}
+
+export function SettingsForm({ initialSettings, initialPendingCount, initialStuckCount }: SettingsFormProps) {
   const [apiUrl, setApiUrl] = useState(initialSettings.apiUrl);
   const [deviceId, setDeviceId] = useState(initialSettings.deviceId);
   const [deviceKey, setDeviceKey] = useState(initialSettings.deviceKey);
@@ -29,6 +34,7 @@ export function SettingsForm({ initialSettings, initialPendingCount }: SettingsF
   const [syncing, setSyncing] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
   const [pendingCount, setPendingCount] = useState(initialPendingCount);
+  const [stuckCount, setStuckCount] = useState(initialStuckCount);
 
   async function handleSave(event: React.FormEvent) {
     event.preventDefault();
@@ -45,7 +51,8 @@ export function SettingsForm({ initialSettings, initialPendingCount }: SettingsF
     const result = all ? await syncAllNow() : await syncNow();
     setSyncing(false);
     setMessage(describeResult(result));
-    setPendingCount(all || result.sent > 0 ? 0 : pendingCount);
+    setPendingCount(Math.max(result.stuck, all || result.sent > 0 ? 0 : pendingCount));
+    setStuckCount(result.stuck);
   }
 
   return (
@@ -84,6 +91,11 @@ export function SettingsForm({ initialSettings, initialPendingCount }: SettingsF
         <p className="text-sm text-muted-foreground">
           {pendingCount === 0 ? "Alles veröffentlicht." : `${pendingCount} Artikel/Kategorien warten auf Synchronisierung.`}
         </p>
+        {stuckCount > 0 && (
+          <p role="alert" className="text-sm text-destructive">
+            {stuckRowsNotice(stuckCount)}
+          </p>
+        )}
         <div className="flex items-center gap-3">
           <Button type="button" variant="outline" disabled={syncing} onClick={() => handleSync(false)}>
             {syncing ? "Synchronisiert …" : "Jetzt synchronisieren"}

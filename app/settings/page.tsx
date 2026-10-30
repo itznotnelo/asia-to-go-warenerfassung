@@ -1,10 +1,14 @@
-import { loadPendingOutboxCount, loadShopSyncSettings } from "./actions";
+import { loadPendingOutboxCount, loadShopSyncSettings, loadStuckOutboxCount } from "./actions";
 import { SettingsForm } from "./settings-form";
 
 export const dynamic = "force-dynamic";
 
 export default async function SettingsPage() {
-  const [settings, pendingCount] = await Promise.all([loadShopSyncSettings(), loadPendingOutboxCount()]);
+  const [settings, pendingCount, stuckCount] = await Promise.all([
+    loadShopSyncSettings(),
+    loadPendingOutboxCount(),
+    loadStuckOutboxCount(),
+  ]);
 
   return (
     <div className="mx-auto flex w-full max-w-xl flex-col gap-6 px-4 py-10">
@@ -14,7 +18,7 @@ export default async function SettingsPage() {
         Schlüssel kommen aus dem Setup-Skript des Backends — einmal dort ausführen, dann hier
         eintragen.
       </p>
-      <SettingsForm initialSettings={settings} initialPendingCount={pendingCount} />
+      <SettingsForm initialSettings={settings} initialPendingCount={pendingCount} initialStuckCount={stuckCount} />
     </div>
   );
 }

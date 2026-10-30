@@ -7,7 +7,7 @@ import { getShopSyncSettings } from "./settings";
 
 export interface SyncRunResult {
   sent: number;
-  dropped: number;
+  stuck: number;
   failed: number;
   ordersImported: number;
   skippedNoSettings: boolean;
@@ -58,7 +58,7 @@ async function runOnePass(): Promise<SyncRunResult> {
   const orderResult = await importPendingOrders(settings);
   return {
     sent: drainResult.sent,
-    dropped: drainResult.dropped,
+    stuck: drainResult.stuck,
     failed: drainResult.failed,
     ordersImported: orderResult.imported,
     skippedNoSettings: drainResult.skippedNoSettings,

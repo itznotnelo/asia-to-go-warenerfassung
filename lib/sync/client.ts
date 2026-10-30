@@ -7,6 +7,17 @@ import type { PendingOrder, PublishOp, ShopSyncSettingsValue } from "./types";
 export const SYNC_FETCH_TIMEOUT_MS = 15_000;
 export const IMAGE_UPLOAD_TIMEOUT_MS = 60_000;
 
+/** A non-ok backend answer, with the status so the drain can tell a retryable outage from a rejected op. */
+export class SyncHttpError extends Error {
+  readonly status: number;
+
+  constructor(message: string, status: number) {
+    super(message);
+    this.name = "SyncHttpError";
+    this.status = status;
+  }
+}
+
 function authHeaders(settings: ShopSyncSettingsValue): Record<string, string> {
   return {
     "x-device-id": settings.deviceId,
@@ -27,7 +38,7 @@ export async function publishOps(settings: ShopSyncSettingsValue, ops: PublishOp
     signal: AbortSignal.timeout(SYNC_FETCH_TIMEOUT_MS),
   });
   if (!response.ok) {
-    throw new Error(`publish failed: HTTP ${response.status}`);
+    throw new SyncHttpError(`publish failed: HTTP ${response.status}`, response.status);
   }
 }
 

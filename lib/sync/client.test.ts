@@ -37,6 +37,7 @@ describe("publishOps", () => {
     vi.stubGlobal("fetch", vi.fn().mockResolvedValue(jsonResponse({}, false, 401)));
 
     await expect(publishOps(settings, [])).rejects.toThrow("HTTP 401");
+    await expect(publishOps(settings, [])).rejects.toMatchObject({ name: "SyncHttpError", status: 401 });
   });
 
   it("strips a trailing slash from apiUrl before building the request", async () => {

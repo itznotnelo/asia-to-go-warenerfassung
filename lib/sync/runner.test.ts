@@ -25,7 +25,7 @@ beforeEach(() => {
   getShopSyncSettingsMock.mockReset().mockResolvedValue(settings);
   pushPendingImagesMock.mockReset().mockResolvedValue([]);
   enqueueProductSyncMock.mockReset().mockResolvedValue(undefined);
-  drainOutboxMock.mockReset().mockResolvedValue({ sent: 0, dropped: 0, failed: 0, skippedNoSettings: false });
+  drainOutboxMock.mockReset().mockResolvedValue({ sent: 0, stuck:0, failed: 0, skippedNoSettings: false });
   importPendingOrdersMock.mockReset().mockResolvedValue({ imported: 0, skippedNoSettings: false });
 });
 
@@ -41,12 +41,12 @@ describe("runSyncPass", () => {
   });
 
   it("combines the drain and order-import results", async () => {
-    drainOutboxMock.mockResolvedValue({ sent: 3, dropped: 1, failed: 0, skippedNoSettings: false });
+    drainOutboxMock.mockResolvedValue({ sent: 3, stuck:1, failed: 0, skippedNoSettings: false });
     importPendingOrdersMock.mockResolvedValue({ imported: 2, skippedNoSettings: false });
 
     const result = await runSyncPass();
 
-    expect(result).toEqual({ sent: 3, dropped: 1, failed: 0, ordersImported: 2, skippedNoSettings: false });
+    expect(result).toEqual({ sent: 3, stuck:1, failed: 0, ordersImported: 2, skippedNoSettings: false });
   });
 });
 
@@ -73,7 +73,7 @@ describe("runSyncPass single-flight (must 6)", () => {
       maxRunning = Math.max(maxRunning, running);
       if (drainOutboxMock.mock.calls.length === 1) await first.promise;
       running--;
-      return { sent: 1, dropped: 0, failed: 0, skippedNoSettings: false };
+      return { sent: 1, stuck:0, failed: 0, skippedNoSettings: false };
     });
 
     const a = runSyncPass();
@@ -92,9 +92,9 @@ describe("runSyncPass single-flight (must 6)", () => {
     drainOutboxMock
       .mockImplementationOnce(async () => {
         await first.promise;
-        return { sent: 0, dropped: 0, failed: 0, skippedNoSettings: false };
+        return { sent: 0, stuck:0, failed: 0, skippedNoSettings: false };
       })
-      .mockResolvedValue({ sent: 1, dropped: 0, failed: 0, skippedNoSettings: false });
+      .mockResolvedValue({ sent: 1, stuck:0, failed: 0, skippedNoSettings: false });
 
     const a = runSyncPass();
     const b = runSyncPass();

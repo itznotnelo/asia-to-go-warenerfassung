@@ -265,7 +265,7 @@ function AllergenChips({
               aria-pressed={active}
               onClick={() => onToggle(key)}
               className={cn(
-                "rounded-full border px-3 py-1.5 text-sm transition-colors",
+                "rounded-md border px-3 py-1.5 text-sm transition-colors",
                 active ? "border-primary bg-primary/20 text-primary" : "border-border text-muted-foreground hover:text-foreground",
               )}
             >

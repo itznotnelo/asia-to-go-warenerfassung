@@ -20,7 +20,7 @@ export default async function ProductDetailPage({ params }: { params: Promise<{ 
     <div className="mx-auto flex w-full max-w-2xl flex-col gap-6 px-4 py-10">
       <div className="flex items-center justify-between">
         <h1 className="text-xl font-semibold">{product.nameDe}</h1>
-        <span className="rounded-full bg-secondary px-3 py-1 text-xs text-muted-foreground">
+        <span className="rounded-md bg-secondary px-3 py-1 text-xs text-muted-foreground">
           {product.dataComplete ? "vollständig" : "unvollständig"}
         </span>
       </div>

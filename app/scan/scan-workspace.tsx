@@ -110,18 +110,20 @@ export function ScanWorkspace({ categories }: { categories: CategoryOption[] }) 
 
       <ManualEntry onSubmit={submitManualBarcode} />
 
-      <div className="flex items-center justify-center gap-1 self-center rounded-full border border-border p-1 text-sm">
+      <div role="group" aria-label="Erfassungsmodus" className="inline-flex self-center overflow-hidden rounded-md border border-border text-sm">
         <button
           type="button"
+          aria-pressed={captureMode === "full"}
           onClick={() => setCaptureMode("full")}
-          className={cn("rounded-full px-3 py-1", captureMode === "full" ? "bg-primary text-primary-foreground" : "text-muted-foreground")}
+          className={cn("rounded-none px-4 py-1.5", captureMode === "full" ? "bg-primary text-primary-foreground" : "text-muted-foreground")}
         >
           Vollerfassung
         </button>
         <button
           type="button"
+          aria-pressed={captureMode === "quick"}
           onClick={() => setCaptureMode("quick")}
-          className={cn("rounded-full px-3 py-1", captureMode === "quick" ? "bg-primary text-primary-foreground" : "text-muted-foreground")}
+          className={cn("rounded-none border-l border-border px-4 py-1.5", captureMode === "quick" ? "bg-primary text-primary-foreground" : "text-muted-foreground")}
         >
           Schnellerfassung
         </button>

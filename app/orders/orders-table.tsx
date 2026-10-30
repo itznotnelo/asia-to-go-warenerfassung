@@ -49,7 +49,7 @@ export function OrdersTable({ orders }: { orders: OrderRow[] }) {
             </div>
             <div className="text-right">
               <p className="font-numeric font-medium">{order.totalChf}</p>
-              <span className="rounded-full bg-secondary px-2 py-0.5 text-xs text-muted-foreground">
+              <span className="rounded-sm bg-secondary px-2 py-0.5 text-xs text-muted-foreground">
                 {STATUS_LABELS[order.status]}
               </span>
             </div>

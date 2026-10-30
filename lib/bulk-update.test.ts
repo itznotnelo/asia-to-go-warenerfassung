@@ -16,7 +16,7 @@ const { applyBulkUpdate } = await import("./bulk-update");
 
 beforeEach(() => {
   productMock.updateMany.mockReset().mockResolvedValue({ count: 2 });
-  categoryMock.findUnique.mockReset().mockResolvedValue({ parentId: "parent-1" });
+  categoryMock.findUnique.mockReset().mockResolvedValue({ slug: "nudeln", parent: { slug: "lebensmittel" } });
   enqueueProductSyncMock.mockReset().mockResolvedValue(undefined);
   triggerBackgroundDrainMock.mockReset();
 });
@@ -46,7 +46,7 @@ describe("applyBulkUpdate", () => {
 
   it.each([
     ["a missing category", null],
-    ["a top-level heading", { parentId: null }],
+    ["a top-level heading", { slug: "lebensmittel", parent: null }],
   ])("rejects %s", async (_label, category) => {
     categoryMock.findUnique.mockResolvedValue(category);
     const result = await applyBulkUpdate({ ids: ["p1"], categoryId: "cat-x" });

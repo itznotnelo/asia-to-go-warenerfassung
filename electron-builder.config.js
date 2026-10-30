@@ -73,6 +73,9 @@ module.exports = {
       console.warn(`WARNING: no pg-tools at ${pgToolsSrc}; this local build cannot make backups`);
     }
   },
+  // Unsigned for now: a code-signing certificate costs money and waits for the
+  // owner's OK (#44). Once there is one, set win.signtoolOptions.publisherName
+  // so electron-updater refuses updates signed by anyone else.
   win: {
     target: "nsis",
     icon: "build/icon.ico",

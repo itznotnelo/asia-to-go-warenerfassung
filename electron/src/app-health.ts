@@ -189,6 +189,28 @@ export function createBootGate() {
   };
 }
 
+// The two buttons of the "Eine neue Version ist bereit" dialog (#44).
+export const UPDATE_DIALOG_BUTTONS = ["Jetzt neu starten", "Später"] as const;
+const INSTALL_NOW = 0;
+
+export interface QuitInstaller {
+  autoInstallOnAppQuit: boolean;
+  quitAndInstall(): void;
+}
+
+// "Später" (or closing the dialog) must really mean later: electron-updater
+// installs a downloaded update on the next quit by default, so turn that off
+// until Papa clicks "Jetzt neu starten" in a later dialog. Before he answers,
+// install-on-quit stays on: a boot that never shows the window still gets
+// its fix on quit. electron-updater 7 renames this to autoInstallEvent = "manual".
+export function applyUpdateDialogChoice(response: number, updater: QuitInstaller): void {
+  if (response === INSTALL_NOW) {
+    updater.quitAndInstall();
+    return;
+  }
+  updater.autoInstallOnAppQuit = false;
+}
+
 export function withTimeout<T>(promise: Promise<T>, ms: number, fallback: T): Promise<T> {
   return new Promise((resolve) => {
     const timer = setTimeout(() => resolve(fallback), ms);

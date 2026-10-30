@@ -117,9 +117,13 @@ jobs:
             exit 1
           fi
 
+  # The 'release' environment holds the publish job until a required reviewer
+  # approves it (#44). Its protection rules live in the GitHub repo settings;
+  # until the owner sets them up, GitHub creates it with no rules on first use.
   build-windows:
     needs: verify
     runs-on: windows-latest
+    environment: release
     permissions:
       contents: write
     steps:

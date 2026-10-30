@@ -1,6 +1,8 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   CRASH_BUDGET_RESET_MS,
+  UPDATE_DIALOG_BUTTONS,
+  applyUpdateDialogChoice,
   createBootGate,
   createErrorThrottle,
   crashDecision,
@@ -189,5 +191,29 @@ describe("update dialog boot gate (review of 3134)", () => {
     const show = vi.fn();
     gate.whenBootDone(show);
     expect(show).not.toHaveBeenCalled();
+  });
+});
+
+describe("update dialog choice (#44)", () => {
+  const fakeUpdater = () => ({ autoInstallOnAppQuit: true, quitAndInstall: vi.fn() });
+
+  it("installs right away on 'Jetzt neu starten'", () => {
+    const updater = fakeUpdater();
+    applyUpdateDialogChoice(UPDATE_DIALOG_BUTTONS.indexOf("Jetzt neu starten"), updater);
+    expect(updater.quitAndInstall).toHaveBeenCalledTimes(1);
+  });
+
+  it("does not install on the next quit after 'Später'", () => {
+    const updater = fakeUpdater();
+    applyUpdateDialogChoice(UPDATE_DIALOG_BUTTONS.indexOf("Später"), updater);
+    expect(updater.quitAndInstall).not.toHaveBeenCalled();
+    expect(updater.autoInstallOnAppQuit).toBe(false);
+  });
+
+  it("still installs when a later dialog gets 'Jetzt neu starten'", () => {
+    const updater = fakeUpdater();
+    applyUpdateDialogChoice(1, updater);
+    applyUpdateDialogChoice(0, updater);
+    expect(updater.quitAndInstall).toHaveBeenCalledTimes(1);
   });
 });

@@ -1,7 +1,14 @@
 import { app, dialog } from "electron";
 import log from "electron-log";
 import { autoUpdater, type UpdateCheckResult } from "electron-updater";
-import { UPDATE_CHECK_INTERVAL_MS, createBootGate, updateFeedOverride, withTimeout } from "./app-health";
+import {
+  UPDATE_CHECK_INTERVAL_MS,
+  UPDATE_DIALOG_BUTTONS,
+  applyUpdateDialogChoice,
+  createBootGate,
+  updateFeedOverride,
+  withTimeout,
+} from "./app-health";
 
 let started = false;
 const bootGate = createBootGate();
@@ -40,6 +47,7 @@ export function initAutoUpdater(): void {
 
   // Held until the main window shows, so it can't interrupt a migration. A
   // boot that never finishes never shows it; the update then installs on quit.
+  // "Später" turns install-on-quit off (#44).
   autoUpdater.on("update-downloaded", () => {
     bootGate.whenBootDone(() => {
       if (installingAfterFailedBoot) return;
@@ -49,13 +57,11 @@ export function initAutoUpdater(): void {
           title: "Asia To Go",
           message: "Eine neue Version ist bereit.",
           detail: "Jetzt neu starten, um sie zu installieren?",
-          buttons: ["Jetzt neu starten", "Später"],
+          buttons: [...UPDATE_DIALOG_BUTTONS],
           defaultId: 0,
           cancelId: 1,
         })
-        .then((result) => {
-          if (result.response === 0) autoUpdater.quitAndInstall();
-        });
+        .then((result) => applyUpdateDialogChoice(result.response, autoUpdater));
     });
   });
 

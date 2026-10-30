@@ -4,7 +4,7 @@ import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { useState, useTransition } from "react";
 import { cn } from "@/lib/utils";
-import { formatChf } from "@/lib/pricing";
+import { formatChf, parseChfToRappen, PRICE_ERROR } from "@/lib/pricing";
 import { quickUpdateProduct } from "@/app/scan/actions";
 import type { CategoryOption } from "@/lib/category-option";
 import type { ProductSummary } from "@/lib/product-summary";
@@ -25,6 +25,7 @@ export function ProductsTable({ products, categories }: ProductsTableProps) {
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [editingPriceId, setEditingPriceId] = useState<string | null>(null);
   const [priceDraft, setPriceDraft] = useState("");
+  const [priceDraftError, setPriceDraftError] = useState(false);
   const [, startTransition] = useTransition();
 
   function toggleSelected(id: string) {
@@ -43,12 +44,19 @@ export function ProductsTable({ products, categories }: ProductsTableProps) {
   function startEditPrice(product: ProductSummary) {
     setEditingPriceId(product.id);
     setPriceDraft((product.priceRappen / 100).toFixed(2));
+    setPriceDraftError(false);
   }
 
   function commitPrice(product: ProductSummary) {
-    const priceRappen = Math.round(Number.parseFloat(priceDraft.replace(",", ".")) * 100);
+    const priceRappen = parseChfToRappen(priceDraft);
+    // Keep the editor open on unparseable input instead of silently dropping it; Esc cancels.
+    if (priceRappen === null || priceRappen <= 0) {
+      setPriceDraftError(true);
+      return;
+    }
+    setPriceDraftError(false);
     setEditingPriceId(null);
-    if (!Number.isFinite(priceRappen) || priceRappen <= 0 || priceRappen === product.priceRappen) return;
+    if (priceRappen === product.priceRappen) return;
     startTransition(async () => {
       await quickUpdateProduct({ id: product.id, priceRappen, isAvailable: product.isAvailable });
       router.refresh();
@@ -111,17 +119,27 @@ export function ProductsTable({ products, categories }: ProductsTableProps) {
                   <td className="px-3 py-2 text-muted-foreground">{category?.name ?? "—"}</td>
                   <td className="font-numeric px-3 py-2">
                     {editingPriceId === product.id ? (
-                      <input
-                        autoFocus
-                        value={priceDraft}
-                        onChange={(e) => setPriceDraft(e.target.value)}
-                        onBlur={() => commitPrice(product)}
-                        onKeyDown={(e) => {
-                          if (e.key === "Enter") commitPrice(product);
-                          if (e.key === "Escape") setEditingPriceId(null);
-                        }}
-                        className="h-8 w-24 rounded border border-input bg-transparent px-2"
-                      />
+                      <>
+                        <input
+                          autoFocus
+                          inputMode="decimal"
+                          aria-label={`Preis ${product.nameDe}`}
+                          value={priceDraft}
+                          onChange={(e) => setPriceDraft(e.target.value)}
+                          onBlur={() => commitPrice(product)}
+                          onKeyDown={(e) => {
+                            if (e.key === "Enter") commitPrice(product);
+                            if (e.key === "Escape") setEditingPriceId(null);
+                          }}
+                          aria-invalid={priceDraftError}
+                          className="h-8 w-24 rounded border border-input bg-transparent px-2 aria-invalid:border-destructive"
+                        />
+                        {priceDraftError && (
+                          <span role="alert" className="block text-xs text-destructive">
+                            {PRICE_ERROR}
+                          </span>
+                        )}
+                      </>
                     ) : (
                       <button type="button" onClick={() => startEditPrice(product)} className="hover:underline">
                         {formatChf(product.priceRappen)}

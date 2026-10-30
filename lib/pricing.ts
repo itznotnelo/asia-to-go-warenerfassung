@@ -69,6 +69,8 @@ export function parseChfToRappen(input: string): number | null {
 
 export const PRICE_ERROR = "Preis nicht erkannt. Beispiel: 4.50 oder 1'250.00";
 
+export const CONTENT_AMOUNT_ERROR = "Inhaltsmenge nicht erkannt. Beispiel: 500 oder 1.5";
+
 /** Strenger Parser für Inhaltsmengen (max. 3 Nachkommastellen): "1'000" → 1000, nicht 1. */
 export function parseContentAmount(input: string): number | null {
   const match = /^(\d+)(?:[.,](\d{1,3}))?$/.exec(normalizeNumberInput(input));

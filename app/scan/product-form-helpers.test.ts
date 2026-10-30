@@ -3,9 +3,11 @@ import {
   buildQuickCaptureInput,
   duplicatedFieldsFromLastSaved,
   mappedOffToFormValues,
+  parseFormNumbers,
   productSummaryToFormValues,
   suggestVatRate,
 } from "./product-form-helpers";
+import { CONTENT_AMOUNT_ERROR, PRICE_ERROR } from "@/lib/pricing";
 import type { MappedOffProduct } from "@/lib/openfoodfacts/mapping";
 import type { ProductSummary } from "@/lib/product-summary";
 import type { CategoryOption } from "@/lib/category-option";
@@ -187,5 +189,37 @@ describe("buildQuickCaptureInput", () => {
       dataSource: "manual",
     });
     expect(input.vatRate).toBe(2.6);
+  });
+});
+
+describe("parseFormNumbers", () => {
+  it("parses Swiss thousands separators instead of truncating them", () => {
+    expect(parseFormNumbers({ priceChf: "1'250.00", contentAmount: "1'000" })).toEqual({
+      ok: true,
+      priceRappen: 125000,
+      contentAmount: 1000,
+    });
+  });
+
+  it("leaves an empty content amount undefined", () => {
+    expect(parseFormNumbers({ priceChf: "4.50", contentAmount: "  " })).toEqual({
+      ok: true,
+      priceRappen: 450,
+      contentAmount: undefined,
+    });
+  });
+
+  it("reports both fields when both are unreadable", () => {
+    expect(parseFormNumbers({ priceChf: "3 50", contentAmount: "abc" })).toEqual({
+      ok: false,
+      errors: { priceChf: PRICE_ERROR, contentAmount: CONTENT_AMOUNT_ERROR },
+    });
+  });
+
+  it("rejects a zero price and a zero content amount", () => {
+    expect(parseFormNumbers({ priceChf: "0", contentAmount: "0" })).toEqual({
+      ok: false,
+      errors: { priceChf: PRICE_ERROR, contentAmount: CONTENT_AMOUNT_ERROR },
+    });
   });
 });

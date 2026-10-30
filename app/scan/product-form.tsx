@@ -6,7 +6,13 @@ import { ProductFieldset } from "@/components/product-fieldset";
 import type { DataSource } from "@/lib/generated/prisma/client";
 import type { CategoryOption } from "@/lib/category-option";
 import type { ProductInput as SaveProductInput } from "@/lib/product-schema";
-import { duplicatedFieldsFromLastSaved, EMPTY_VALUES, type FormValues } from "./product-form-helpers";
+import {
+  duplicatedFieldsFromLastSaved,
+  EMPTY_VALUES,
+  parseFormNumbers,
+  type FormValues,
+  type NumberFieldErrors,
+} from "./product-form-helpers";
 
 export type { FormValues } from "./product-form-helpers";
 export { mappedOffToFormValues, suggestVatRate } from "./product-form-helpers";
@@ -26,6 +32,7 @@ interface ProductFormProps {
 
 export function ProductForm({ ean, categories, initial, sourced, lastSaved, dataSource, onSave, onCancel, saving }: ProductFormProps) {
   const [values, setValues] = useState<FormValues>({ ...EMPTY_VALUES, ...initial });
+  const [errors, setErrors] = useState<NumberFieldErrors>({});
   const formId = useId();
 
   function update<K extends keyof FormValues>(key: K, value: FormValues[K]) {
@@ -34,7 +41,13 @@ export function ProductForm({ ean, categories, initial, sourced, lastSaved, data
 
   function handleSubmit(event: React.FormEvent) {
     event.preventDefault();
-    const priceRappen = Math.round(Number.parseFloat(values.priceChf.replace(",", ".")) * 100);
+    const parsed = parseFormNumbers(values);
+    if (!parsed.ok) {
+      setErrors(parsed.errors);
+      return;
+    }
+    setErrors({});
+    const { priceRappen, contentAmount } = parsed;
     const input: SaveProductInput = {
       ean,
       nameDe: values.nameDe,
@@ -45,7 +58,7 @@ export function ProductForm({ ean, categories, initial, sourced, lastSaved, data
       priceRappen,
       vatRate: values.vatRate,
       unitType: values.unitType,
-      contentAmount: values.contentAmount ? Number.parseFloat(values.contentAmount.replace(",", ".")) : undefined,
+      contentAmount,
       contentUnit: values.contentUnit || undefined,
       storageType: values.storageType,
       ingredientsDe: values.ingredientsDe || undefined,
@@ -74,7 +87,7 @@ export function ProductForm({ ean, categories, initial, sourced, lastSaved, data
     <form onSubmit={handleSubmit} onKeyDown={handleKeyDown} className="flex flex-col gap-5 rounded-xl border border-border bg-card p-6">
       {ean && <p className="font-numeric text-sm text-muted-foreground">{ean}</p>}
 
-      <ProductFieldset formId={formId} values={values} onChange={update} categories={categories} sourced={sourced} />
+      <ProductFieldset formId={formId} values={values} onChange={update} categories={categories} sourced={sourced} errors={errors} />
 
       <div className="flex items-center gap-3">
         <Button type="submit" size="lg" className="h-14 px-6 text-base" disabled={saving}>

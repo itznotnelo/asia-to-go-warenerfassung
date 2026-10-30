@@ -3,6 +3,7 @@ import type { ContentUnit, DataSource, StorageType, UnitType } from "@/lib/gener
 import type { ProductSummary } from "@/lib/product-summary";
 import type { CategoryOption } from "@/lib/category-option";
 import type { ProductInput as SaveProductInput } from "@/lib/product-schema";
+import { CONTENT_AMOUNT_ERROR, parseChfToRappen, parseContentAmount, PRICE_ERROR } from "@/lib/pricing";
 
 export interface FormValues {
   nameDe: string;
@@ -82,6 +83,32 @@ export function productSummaryToFormValues(product: ProductSummary): FormValues 
     allergens: product.allergens,
     notes: product.notes ?? "",
   };
+}
+
+export type NumberFieldErrors = Partial<Record<"priceChf" | "contentAmount", string>>;
+
+export type ParsedFormNumbers =
+  | { ok: true; priceRappen: number; contentAmount: number | undefined }
+  | { ok: false; errors: NumberFieldErrors };
+
+/**
+ * Preis und Inhaltsmenge streng parsen, bevor gespeichert wird. Lieber eine
+ * Feldmeldung als ein falscher Preis ("1'250" war mit parseFloat CHF 1.00).
+ */
+export function parseFormNumbers(values: Pick<FormValues, "priceChf" | "contentAmount">): ParsedFormNumbers {
+  const errors: NumberFieldErrors = {};
+  const priceRappen = parseChfToRappen(values.priceChf);
+  if (priceRappen === null || priceRappen <= 0) errors.priceChf = PRICE_ERROR;
+
+  let contentAmount: number | undefined;
+  if (values.contentAmount.trim() !== "") {
+    const parsed = parseContentAmount(values.contentAmount);
+    if (parsed === null || parsed <= 0) errors.contentAmount = CONTENT_AMOUNT_ERROR;
+    else contentAmount = parsed;
+  }
+
+  if (priceRappen === null || priceRappen <= 0 || errors.contentAmount) return { ok: false, errors };
+  return { ok: true, priceRappen, contentAmount };
 }
 
 // "Alkohol" und alles unter "Non-Food" sind die einzigen Kategorien mit dem erhöhten Satz, siehe swiss-food-compliance.

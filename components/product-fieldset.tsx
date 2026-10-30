@@ -5,7 +5,7 @@ import { ALLERGEN_KEYS, ALLERGEN_LABELS } from "@/lib/allergens";
 import { inputClass } from "@/lib/input-class";
 import type { ContentUnit, StorageType, UnitType } from "@/lib/generated/prisma/client";
 import type { CategoryOption } from "@/lib/category-option";
-import { suggestVatRate, type FormValues } from "@/app/scan/product-form-helpers";
+import { suggestVatRate, type FormValues, type NumberFieldErrors } from "@/app/scan/product-form-helpers";
 
 interface ProductFieldsetProps {
   formId: string;
@@ -15,6 +15,8 @@ interface ProductFieldsetProps {
   /** Felder, die von OFF übernommen wurden — bekommt ein sichtbares "OFF"-Badge. Nur im /scan-Kontext relevant. */
   sourced?: Set<keyof FormValues>;
   autoFocusName?: boolean;
+  /** Feldmeldungen aus parseFormNumbers(), erscheinen unter Preis bzw. Inhaltsmenge. */
+  errors?: NumberFieldErrors;
 }
 
 /**
@@ -22,7 +24,7 @@ interface ProductFieldsetProps {
  * /scan und der Detailseite in /products/[id] — beide bearbeiten dasselbe
  * Produktschema, nur Drumherum (Speichern-Semantik, Ctrl+D, Löschen) unterscheidet sich.
  */
-export function ProductFieldset({ formId, values, onChange, categories, sourced, autoFocusName = true }: ProductFieldsetProps) {
+export function ProductFieldset({ formId, values, onChange, categories, sourced, autoFocusName = true, errors = {} }: ProductFieldsetProps) {
   const sourcedFields = sourced ?? new Set<keyof FormValues>();
 
   function handleCategoryChange(categoryId: string) {
@@ -108,13 +110,14 @@ export function ProductFieldset({ formId, values, onChange, categories, sourced,
           </select>
         </Field>
 
-        <Field label="Preis (CHF)" htmlFor={`${formId}-price`}>
+        <Field label="Preis (CHF)" htmlFor={`${formId}-price`} error={errors.priceChf}>
           <input
             id={`${formId}-price`}
             required
             inputMode="decimal"
             value={values.priceChf}
             onChange={(e) => onChange("priceChf", e.target.value)}
+            aria-invalid={errors.priceChf !== undefined}
             className={cn(inputClass(), "font-numeric")}
           />
         </Field>
@@ -132,12 +135,18 @@ export function ProductFieldset({ formId, values, onChange, categories, sourced,
           </select>
         </Field>
 
-        <Field label="Inhaltsmenge" sourced={sourcedFields.has("contentAmount")} htmlFor={`${formId}-amount`}>
+        <Field
+          label="Inhaltsmenge"
+          sourced={sourcedFields.has("contentAmount")}
+          htmlFor={`${formId}-amount`}
+          error={errors.contentAmount}
+        >
           <input
             id={`${formId}-amount`}
             inputMode="decimal"
             value={values.contentAmount}
             onChange={(e) => onChange("contentAmount", e.target.value)}
+            aria-invalid={errors.contentAmount !== undefined}
             className={cn(inputClass(), "font-numeric")}
           />
         </Field>
@@ -230,11 +239,13 @@ function Field({
   label,
   htmlFor,
   sourced,
+  error,
   children,
 }: {
   label: string;
   htmlFor: string;
   sourced?: boolean;
+  error?: string;
   children: React.ReactNode;
 }) {
   return (
@@ -244,6 +255,11 @@ function Field({
         {sourced && <SourcedBadge />}
       </span>
       {children}
+      {error && (
+        <span role="alert" className="text-sm text-destructive">
+          {error}
+        </span>
+      )}
     </label>
   );
 }

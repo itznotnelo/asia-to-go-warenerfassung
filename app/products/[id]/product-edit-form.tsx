@@ -9,7 +9,12 @@ import { inputClass } from "@/lib/input-class";
 import type { CategoryOption } from "@/lib/category-option";
 import type { ProductInput as SaveProductInput } from "@/lib/product-schema";
 import type { ProductSummary } from "@/lib/product-summary";
-import { productSummaryToFormValues, type FormValues } from "@/app/scan/product-form-helpers";
+import {
+  parseFormNumbers,
+  productSummaryToFormValues,
+  type FormValues,
+  type NumberFieldErrors,
+} from "@/app/scan/product-form-helpers";
 import { deleteProduct, updateProduct } from "../actions";
 
 export function ProductEditForm({ product, categories }: { product: ProductSummary; categories: CategoryOption[] }) {
@@ -20,6 +25,7 @@ export function ProductEditForm({ product, categories }: { product: ProductSumma
   const [saving, setSaving] = useState(false);
   const [deleting, setDeleting] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
+  const [errors, setErrors] = useState<NumberFieldErrors>({});
 
   function update<K extends keyof FormValues>(key: K, value: FormValues[K]) {
     setValues((prev) => ({ ...prev, [key]: value }));
@@ -27,10 +33,16 @@ export function ProductEditForm({ product, categories }: { product: ProductSumma
 
   async function handleSubmit(event: React.FormEvent) {
     event.preventDefault();
-    setSaving(true);
     setMessage(null);
+    const parsed = parseFormNumbers(values);
+    if (!parsed.ok) {
+      setErrors(parsed.errors);
+      return;
+    }
+    setErrors({});
+    setSaving(true);
 
-    const priceRappen = Math.round(Number.parseFloat(values.priceChf.replace(",", ".")) * 100);
+    const { priceRappen, contentAmount } = parsed;
     const input: SaveProductInput = {
       ean: ean.trim() || null,
       nameDe: values.nameDe,
@@ -41,7 +53,7 @@ export function ProductEditForm({ product, categories }: { product: ProductSumma
       priceRappen,
       vatRate: values.vatRate,
       unitType: values.unitType,
-      contentAmount: values.contentAmount ? Number.parseFloat(values.contentAmount.replace(",", ".")) : undefined,
+      contentAmount,
       contentUnit: values.contentUnit || undefined,
       storageType: values.storageType,
       ingredientsDe: values.ingredientsDe || undefined,
@@ -80,7 +92,7 @@ export function ProductEditForm({ product, categories }: { product: ProductSumma
         <input value={ean} onChange={(e) => setEan(e.target.value)} className={inputClass() + " font-numeric"} />
       </label>
 
-      <ProductFieldset formId={formId} values={values} onChange={update} categories={categories} autoFocusName={false} />
+      <ProductFieldset formId={formId} values={values} onChange={update} categories={categories} autoFocusName={false} errors={errors} />
 
       <div className="flex items-center gap-3">
         <Button type="submit" size="lg" className="h-14 px-6 text-base" disabled={saving}>

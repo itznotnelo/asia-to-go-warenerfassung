@@ -20,6 +20,13 @@ Jede Schema-Entscheidung ist deshalb eine Shop-Entscheidung.
 6. **`nameOriginal` ist kein Nice-to-have.** Kundschaft sucht nach dem
    chinesischen/thailändischen Namen. Immer mitführen, immer durchsuchbar.
 7. Keine Migration von Hand editieren. Schema ändern → `prisma migrate dev`.
+8. **`appId` in `electron-builder.config.js` nie wieder ändern.** NSIS bildet
+   daraus den Eintrag in «Apps & Features», Installationsordner und Daten
+   hängen aber am `productName`. Ein neuer `appId` (so passiert in 0.1.4)
+   erzeugt einen zweiten Eintrag auf denselben Ordner; dessen «Deinstallieren»
+   entfernt die laufende App. Aufräumen: `build/installer.nsh`.
+   `productName` ebenfalls nicht ändern (Daten liegen unter
+   `%APPDATA%\Asia To Go`).
 
 ## Konventionen
 

@@ -3,6 +3,10 @@ const path = require("node:path");
 
 /** @type {import('electron-builder').Configuration} */
 module.exports = {
+  // NEVER change appId again. NSIS derives the Apps & Features uninstall key
+  // from it, while the install folder and userData come from productName: a
+  // new appId leaves a second entry pointing at the same folder (0.1.4 did
+  // this, build/installer.nsh cleans it up). See CLAUDE.md.
   appId: "io.github.itznotnelo.asia-to-go",
   productName: "Asia To Go",
   directories: {
@@ -77,5 +81,7 @@ module.exports = {
     oneClick: false,
     perMachine: false,
     allowToChangeInstallationDirectory: true,
+    // Removes the stale pre-0.1.4 'Asia To Go' entry (old appId); data stays.
+    include: "build/installer.nsh",
   },
 };

@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import { IBM_Plex_Sans, JetBrains_Mono } from "next/font/google";
+import { BackupBanner } from "@/components/backup-banner";
 import { Nav } from "@/components/nav";
 import { ScannerFieldGuard } from "@/components/scanner-field-guard";
 import "./globals.css";
@@ -26,6 +27,7 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
     <html lang="de-CH" className={`dark ${plexSans.variable} ${jetbrainsMono.variable} h-full antialiased`}>
       <body className="min-h-full flex flex-col">
         <Nav />
+        <BackupBanner />
         <ScannerFieldGuard />
         {children}
       </body>

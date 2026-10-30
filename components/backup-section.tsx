@@ -45,6 +45,9 @@ declare global {
   }
 }
 
+/** Fired after a manual backup, so the Einstellungen block and the red bar under the nav both re-read the status. */
+export const BACKUP_CHANGED_EVENT = "atg:backup-changed";
+
 const TONE_CLASS = {
   ok: "",
   warning: "rounded-md border border-orange-500/60 bg-orange-500/10 px-3 py-2",
@@ -66,11 +69,15 @@ export function BackupSection() {
   }, []);
 
   useEffect(() => {
-    if (!window.backupApi) return;
-    setApi(window.backupApi);
-    void refresh(window.backupApi);
+    const backupApi = window.backupApi;
+    if (!backupApi) return;
+    setApi(backupApi);
+    void refresh(backupApi);
     // R4 "Andere wählen" comes back here to pick another backup.
     if (window.location.hash === "#zurueckholen") setRestoreOpen(true);
+    const onChanged = () => void refresh(backupApi);
+    window.addEventListener(BACKUP_CHANGED_EVENT, onChanged);
+    return () => window.removeEventListener(BACKUP_CHANGED_EVENT, onChanged);
   }, [refresh]);
 
   if (!api || !info) return null;
@@ -92,6 +99,7 @@ export function BackupSection() {
       }
     } finally {
       await refresh(api);
+      window.dispatchEvent(new Event(BACKUP_CHANGED_EVENT));
     }
   }
 
@@ -109,7 +117,7 @@ export function BackupSection() {
   }
 
   return (
-    <section className="flex flex-col gap-3" aria-labelledby="backup-title">
+    <section id="sicherung" className="flex flex-col gap-3 scroll-mt-4" aria-labelledby="backup-title">
       <h2 id="backup-title" className="text-lg font-semibold">
         Datensicherung
       </h2>

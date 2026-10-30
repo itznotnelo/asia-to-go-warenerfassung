@@ -30,7 +30,8 @@ export function stepStates(current: RestoreStep): Record<RestoreStep, StepState>
 
 export const R3_TITLE = "Daten werden zurückgeholt";
 export const R3_DO_NOT_CLOSE = "PC nicht ausschalten und App nicht schliessen.";
-export const REPUBLISH_FAILED = "Senden hat nicht geklappt. Später in Einstellungen > Website-Abgleich nochmals versuchen.";
+export const REPUBLISH_FAILED =
+  'Senden hat nicht geklappt. Später in den Einstellungen beim Website-Abgleich "Jetzt neu senden" drücken.';
 
 export type RestoreAction = "later" | "republish" | "copyReport" | "close" | "openFolder" | "chooseOther";
 
@@ -121,13 +122,13 @@ export function restoreOutcome(
 function reasonFor(step: RestoreStep | "migrate"): string {
   switch (step) {
     case "safety":
-      return "Der heutige Stand konnte nicht gesichert werden";
+      return "Der heutige Stand konnte nicht gesichert werden.";
     case "images":
-      return "Die Bilder der Sicherung konnten nicht ausgepackt werden";
+      return "Die Bilder aus der Sicherung konnten nicht ausgepackt werden.";
     case "migrate":
-      return "Die Daten konnten nicht an diese Version angepasst werden";
+      return "Die Sicherung passt nicht zu dieser App-Version.";
     default:
-      return "Die Daten der Sicherung konnten nicht eingespielt werden";
+      return "Die Daten aus der Sicherung konnten nicht eingespielt werden.";
   }
 }
 

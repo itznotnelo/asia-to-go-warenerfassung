@@ -22,7 +22,7 @@ const REASON_TEXT: Record<FailureReason, string> = {
   diskFull: "zu wenig Speicher auf dem PC",
   corrupt: "Sicherung war fehlerhaft und wurde gelöscht",
   interrupted: "App wurde während der Sicherung geschlossen",
-  toolMissing: "Sicherungsprogramm fehlt",
+  toolMissing: "ein Teil der App fehlt, bitte HQ melden",
   unknown: "unbekannter Fehler",
 };
 

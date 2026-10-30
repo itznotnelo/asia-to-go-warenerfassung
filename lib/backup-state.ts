@@ -21,7 +21,7 @@ const REASON_TEXT: Record<BackupFailureReason, string> = {
   diskFull: "zu wenig Speicher auf dem PC",
   corrupt: "Sicherung war fehlerhaft und wurde gelöscht",
   interrupted: "App wurde während der Sicherung geschlossen",
-  toolMissing: "Sicherungsprogramm fehlt",
+  toolMissing: "ein Teil der App fehlt, bitte HQ melden",
   unknown: "unbekannter Fehler",
 };
 
@@ -78,4 +78,21 @@ export function backupState(status: BackupStatusInput, newestCreatedAt: string |
     };
   }
   return { tone: "ok", text: last, canCreate: true };
+}
+
+export interface BackupBanner {
+  text: string;
+  /** false = broken tool: no [Jetzt sichern], the bar links to Einstellungen instead. */
+  canCreate: boolean;
+}
+
+/** Red bar under the nav (UX 1.3, #3122): only in the red states, first matching row wins. Orange shows nothing. */
+export function backupBanner(status: BackupStatusInput, newestCreatedAt: string | null, now: Date): BackupBanner | null {
+  if (backupState(status, newestCreatedAt, now).tone !== "error") return null;
+  if (status.toolProblem) return { text: "Datensicherung nicht möglich. Bitte HQ melden.", canCreate: false };
+  if (!newestCreatedAt) return { text: "Daten noch nie gesichert.", canCreate: true };
+  // Never "seit 0/1 Tagen": below 2 days the red comes from 2 failed tries.
+  const days = calendarDaysBetween(new Date(newestCreatedAt), now);
+  if (days >= 2) return { text: `Daten seit ${days} Tagen nicht gesichert.`, canCreate: true };
+  return { text: "Datensicherung hat zweimal nicht geklappt.", canCreate: true };
 }

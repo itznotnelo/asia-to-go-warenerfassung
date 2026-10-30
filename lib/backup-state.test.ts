@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { backupState, formatBackupTime, type BackupStatusInput } from "./backup-state";
+import { backupBanner, backupState, formatBackupTime, type BackupStatusInput } from "./backup-state";
 
 const now = new Date(2026, 9, 30, 9, 0); // Fr 30.10.2026, 09:00
 const healthy: BackupStatusInput = { lastError: null, consecutiveFailures: 0, toolProblem: null };
@@ -52,5 +52,41 @@ describe("backupState (files' UX 1.3)", () => {
       text: "Datensicherung nicht möglich. Bitte HQ melden.",
       canCreate: false,
     });
+  });
+
+  it("uses the fixed reason text for a missing pg_dump (#3122)", () => {
+    const s = backupState({ lastError: "toolMissing", consecutiveFailures: 1, toolProblem: null }, at(29, 2, 15), now);
+    expect(s.text).toBe("Letzte Sicherung: gestern, 02:15. Die Sicherung von heute hat nicht geklappt: ein Teil der App fehlt, bitte HQ melden.");
+  });
+});
+
+describe("backupBanner (files' UX 1.3, #3122)", () => {
+  const failing: BackupStatusInput = { lastError: "unknown", consecutiveFailures: 2, toolProblem: null };
+
+  it("shows nothing in the ok and orange states", () => {
+    expect(backupBanner(healthy, at(30, 2, 15), now)).toBeNull();
+    expect(backupBanner(healthy, at(27, 2, 15), now)).toBeNull();
+    expect(backupBanner({ lastError: "diskFull", consecutiveFailures: 1, toolProblem: null }, at(29, 2, 15), now)).toBeNull();
+  });
+
+  it("broken tool wins and has no backup button", () => {
+    expect(backupBanner({ ...failing, toolProblem: "pg_dump missing" }, null, now)).toEqual({
+      text: "Datensicherung nicht möglich. Bitte HQ melden.",
+      canCreate: false,
+    });
+  });
+
+  it("never backed up", () => {
+    expect(backupBanner(healthy, null, now)).toEqual({ text: "Daten noch nie gesichert.", canCreate: true });
+  });
+
+  it("too old counts calendar days, like the (vor N Tagen) bracket", () => {
+    expect(backupBanner(healthy, at(20, 2, 15), now)).toEqual({ text: "Daten seit 10 Tagen nicht gesichert.", canCreate: true });
+    expect(backupBanner(failing, at(28, 23, 50), now)?.text).toBe("Daten seit 2 Tagen nicht gesichert.");
+  });
+
+  it("2 failed tries with a backup under 2 days old never says 'seit 0/1 Tagen'", () => {
+    expect(backupBanner(failing, at(30, 2, 15), now)?.text).toBe("Datensicherung hat zweimal nicht geklappt.");
+    expect(backupBanner(failing, at(29, 2, 15), now)?.text).toBe("Datensicherung hat zweimal nicht geklappt.");
   });
 });

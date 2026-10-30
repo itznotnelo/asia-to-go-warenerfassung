@@ -8,13 +8,17 @@ import {
   updateProductSchema,
   type ProductInput,
 } from "./product-schema";
+import type { ProductKind } from "./product-kind";
 
-const complete: ProductInput = {
+type ResolvedInput = ProductInput & { kind: ProductKind };
+
+const complete: ResolvedInput = {
   ean: "3017620422003",
   nameDe: "Sojasauce",
   categoryId: "cat-1",
   priceRappen: 495,
   vatRate: 2.6,
+  kind: "food",
   unitType: "piece",
   contentAmount: 250,
   contentUnit: "ml",
@@ -76,9 +80,48 @@ describe("computeDataComplete", () => {
     expect(computeDataComplete(complete, false)).toBe(false);
   });
 
-  it("is incomplete without contentAmount/contentUnit even for piece-type items", () => {
-    const pieceItem: ProductInput = { ...complete, unitType: "piece", contentAmount: undefined, contentUnit: undefined };
+  it("is incomplete without contentAmount/contentUnit even for piece-type food", () => {
+    const pieceItem: ResolvedInput = { ...complete, unitType: "piece", contentAmount: undefined, contentUnit: undefined };
     expect(computeDataComplete(pieceItem, true)).toBe(false);
+  });
+
+  it("treats alcohol like food: content, ingredients and checked allergens (#27)", () => {
+    const wine: ResolvedInput = { ...complete, kind: "alcohol", vatRate: 8.1, allergens: ["sulphites"] };
+    expect(computeDataComplete(wine, true)).toBe(true);
+    expect(computeDataComplete({ ...wine, ingredientsDe: undefined }, true)).toBe(false);
+    expect(computeDataComplete({ ...wine, allergensConfirmed: false }, true)).toBe(false);
+    expect(computeDataComplete({ ...wine, contentAmount: undefined, contentUnit: undefined }, true)).toBe(false);
+  });
+
+  describe.each(["non_food", "cosmetics"] as const)("%s (#27)", (kind) => {
+    // Seed example from the review: Bambusdampfkorb, no content, no ingredients, nothing to confirm.
+    const steamer: ResolvedInput = {
+      ...complete,
+      kind,
+      nameDe: "Bambusdampfkorb, 25 cm",
+      vatRate: 8.1,
+      contentAmount: undefined,
+      contentUnit: undefined,
+      ingredientsDe: undefined,
+      allergens: [],
+      allergensConfirmed: false,
+    };
+
+    it("is complete with name, price and an image only", () => {
+      expect(computeDataComplete(steamer, true)).toBe(true);
+    });
+
+    it("still needs an image, a name and a price", () => {
+      expect(computeDataComplete(steamer, false)).toBe(false);
+      expect(computeDataComplete({ ...steamer, nameDe: "" }, true)).toBe(false);
+      expect(computeDataComplete({ ...steamer, priceRappen: 0 }, true)).toBe(false);
+    });
+
+    it("needs content when sold by weight or volume, for the Grundpreis", () => {
+      expect(computeDataComplete({ ...steamer, unitType: "weight" }, true)).toBe(false);
+      expect(computeDataComplete({ ...steamer, unitType: "volume" }, true)).toBe(false);
+      expect(computeDataComplete({ ...steamer, unitType: "volume", contentAmount: 500, contentUnit: "ml" }, true)).toBe(true);
+    });
   });
 
   it("is incomplete without ingredientsDe", () => {
@@ -91,6 +134,21 @@ describe("computeDataComplete", () => {
 
   it("is incomplete while the allergens are not confirmed (hard rule 5)", () => {
     expect(computeDataComplete({ ...complete, allergensConfirmed: false }, true)).toBe(false);
+  });
+});
+
+describe("productInputSchema kind (#27)", () => {
+  it("is optional, so the /scan forms can leave it to the category", () => {
+    expect(productInputSchema.parse({ ...complete, kind: undefined }).kind).toBeUndefined();
+  });
+
+  it.each(["food", "alcohol", "non_food", "cosmetics"] as const)("accepts %s", (kind) => {
+    expect(productInputSchema.parse({ ...complete, kind }).kind).toBe(kind);
+  });
+
+  it("rejects anything else", () => {
+    expect(productInputSchema.safeParse({ ...complete, kind: "beverage_alcohol" }).success).toBe(false);
+    expect(updateProductSchema.safeParse({ ...complete, id: "p1", kind: "Food" }).success).toBe(false);
   });
 });
 
@@ -204,6 +262,8 @@ describe("isProductComplete", () => {
   const savedProduct = {
     nameDe: "Sojasauce",
     priceRappen: 495,
+    kind: "food" as ProductKind,
+    unitType: "piece" as const,
     contentAmount: 250,
     contentUnit: "ml",
     ingredientsDe: "Wasser, Sojabohnen, Salz",
@@ -222,5 +282,11 @@ describe("isProductComplete", () => {
   it("treats null fields (as stored in the DB) the same as undefined", () => {
     expect(isProductComplete({ ...savedProduct, ingredientsDe: null }, true)).toBe(false);
     expect(isProductComplete({ ...savedProduct, contentAmount: null, contentUnit: null }, true)).toBe(false);
+  });
+
+  it("lets a saved non-food row with nulls become complete after the image upload (#27)", () => {
+    const bowl = { ...savedProduct, kind: "non_food" as ProductKind, contentAmount: null, contentUnit: null, ingredientsDe: null, allergensConfirmed: false };
+    expect(isProductComplete(bowl, false)).toBe(false);
+    expect(isProductComplete(bowl, true)).toBe(true);
   });
 });

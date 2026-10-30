@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { categoryTree, VAT_RATE_BY_SLUG, type CategorySeed } from "@/electron/src/category-tree";
+import { categoryTree, KIND_BY_SLUG, VAT_RATE_BY_SLUG, type CategorySeed } from "@/electron/src/category-tree";
 
 function flatten(nodes: CategorySeed[]): CategorySeed[] {
   return nodes.flatMap((node) => [node, ...flatten(node.children ?? [])]);
@@ -25,6 +25,17 @@ describe("category tree (shared by prisma/seed.ts and the Electron seeder)", () 
     expect(high).toEqual(
       ["alkohol", "geschirr-tischkultur", "haushalt", "kosmetik-koerperpflege", "kuechenutensilien", "non-food"].sort(),
     );
+  });
+
+  it("marks alcohol, non-food and cosmetics with their kind, children inheriting (#27)", () => {
+    expect(Object.fromEntries([...KIND_BY_SLUG].sort(([a], [b]) => a.localeCompare(b)))).toEqual({
+      alkohol: "alcohol",
+      "geschirr-tischkultur": "non_food",
+      haushalt: "non_food",
+      "kosmetik-koerperpflege": "cosmetics",
+      kuechenutensilien: "non_food",
+      "non-food": "non_food",
+    });
   });
 
   it("uses Swiss spelling in category names", () => {

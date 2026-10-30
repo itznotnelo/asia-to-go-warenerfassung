@@ -25,8 +25,8 @@ const prismaMock = {
 };
 vi.mock("@/lib/prisma", () => ({ prisma: prismaMock }));
 
-const isAssignableCategoryMock = vi.fn();
-vi.mock("@/lib/category-guard", () => ({ CATEGORY_ERROR: "Kategorie wählen", isAssignableCategory: isAssignableCategoryMock }));
+const assignableCategoryMock = vi.fn();
+vi.mock("@/lib/category-guard", () => ({ CATEGORY_ERROR: "Kategorie wählen", assignableCategory: assignableCategoryMock }));
 
 const enqueueProductSyncMock = vi.fn();
 vi.mock("@/lib/sync/outbox", () => ({ enqueueProductSync: enqueueProductSyncMock }));
@@ -58,6 +58,7 @@ function savedRow(sku: string) {
     sku,
     ...INPUT,
     vatRate: { toNumber: () => 2.6 },
+    kind: "food",
     nameOriginal: null,
     brand: null,
     originCountry: null,
@@ -85,7 +86,7 @@ beforeEach(() => {
   prismaMock.$transaction.mockClear();
   prismaMock.$queryRaw.mockReset().mockResolvedValue([{ max: 41 }]);
   prismaMock.$executeRaw.mockReset().mockResolvedValue(1);
-  isAssignableCategoryMock.mockReset().mockResolvedValue(true);
+  assignableCategoryMock.mockReset().mockResolvedValue({ slug: "instantnudeln", parentSlug: "nudeln-reis" });
   enqueueProductSyncMock.mockReset().mockResolvedValue(undefined);
 });
 
@@ -210,6 +211,30 @@ describe("createProduct", () => {
     productMock.create.mockResolvedValue(savedRow("ASIA-00042"));
     await createProduct({ ...INPUT, allergens: ["gluten"], allergensConfirmed: true });
     expect(productMock.create.mock.calls[0][0].data.allergensConfirmedAt).toBeInstanceOf(Date);
+  });
+
+  it("refuses a top-level category before touching the DB", async () => {
+    assignableCategoryMock.mockResolvedValue(null);
+    const result = await createProduct(INPUT);
+    expect(result).toMatchObject({ ok: false, fieldErrors: { categoryId: ["Kategorie wählen"] } });
+    expect(productMock.create).not.toHaveBeenCalled();
+  });
+
+  it("takes the kind from the category when the form sends none (#27)", async () => {
+    productMock.create.mockResolvedValue(savedRow("ASIA-00042"));
+    assignableCategoryMock.mockResolvedValueOnce({ slug: "kuechenutensilien", parentSlug: "non-food" });
+    await createProduct({ ...INPUT, nameDe: "Bambusdampfkorb, 25 cm", vatRate: 8.1 });
+    expect(productMock.create.mock.calls[0][0].data.kind).toBe("non_food");
+
+    await createProduct(INPUT);
+    expect(productMock.create.mock.calls[1][0].data.kind).toBe("food");
+  });
+
+  it("keeps a kind the form sent, whatever the category says (#27)", async () => {
+    productMock.create.mockResolvedValue(savedRow("ASIA-00042"));
+    assignableCategoryMock.mockResolvedValue({ slug: "kuechenutensilien", parentSlug: "non-food" });
+    await createProduct({ ...INPUT, kind: "food" });
+    expect(productMock.create.mock.calls[0][0].data.kind).toBe("food");
   });
 
   it("rethrows other DB errors so the client shows 'Speichern fehlgeschlagen'", async () => {

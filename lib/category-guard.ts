@@ -9,6 +9,15 @@ export const CATEGORY_ERROR = "Bitte eine Unterkategorie wählen.";
  * end in an uncaught FK error or file products under a heading.
  */
 export async function isAssignableCategory(categoryId: string): Promise<boolean> {
-  const category = await prisma.category.findUnique({ where: { id: categoryId }, select: { parentId: true } });
-  return category !== null && category.parentId !== null;
+  return (await assignableCategory(categoryId)) !== null;
+}
+
+/** Same check, but returns the slugs a save needs for suggestKind(); null when not assignable. */
+export async function assignableCategory(categoryId: string): Promise<{ slug: string; parentSlug: string } | null> {
+  const category = await prisma.category.findUnique({
+    where: { id: categoryId },
+    select: { slug: true, parent: { select: { slug: true } } },
+  });
+  if (!category?.parent) return null;
+  return { slug: category.slug, parentSlug: category.parent.slug };
 }

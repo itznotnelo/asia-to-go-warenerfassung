@@ -34,6 +34,7 @@ function makeProductRow(overrides: Record<string, unknown> = {}) {
     category,
     priceRappen: 1290,
     vatRate: 2.6,
+    kind: "food",
     unitType: "weight",
     contentAmount: 5,
     contentUnit: "kg",

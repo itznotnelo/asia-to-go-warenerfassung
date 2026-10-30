@@ -4,6 +4,7 @@ import { ALLERGEN_KEYS } from "@/lib/allergens";
 import { isValidBarcode, normalizeGtin } from "@/lib/barcode";
 import { nutritionSchema } from "@/lib/nutrition";
 import { unitRuleIssues, type UnitFields } from "@/lib/unit-rules";
+import { needsFoodLabelling, PRODUCT_KINDS, type ProductKind } from "@/lib/product-kind";
 
 // Server actions are plain POST endpoints, so the UI <select> is not enough to keep 7.7 or 0 out.
 export const vatRateSchema = z.number().refine((rate) => VAT_RATES.includes(rate), "MwSt muss 2.6 % oder 8.1 % sein");
@@ -44,6 +45,8 @@ const productInputObject = z.object({
   categoryId: z.string().min(1, "Kategorie ist Pflicht"),
   priceRappen: priceRappenSchema,
   vatRate: vatRateSchema,
+  // Absent (the /scan forms) means the server takes the category's kind, see suggestKind.
+  kind: z.enum(PRODUCT_KINDS).optional(),
   unitType: z.enum(["piece", "weight", "volume"]),
   contentAmount: z.number().positive("Inhaltsmenge muss grösser als 0 sein").optional(),
   contentUnit: z.enum(["g", "kg", "ml", "l", "stk"]).optional(),
@@ -69,6 +72,8 @@ export type ProductInput = z.infer<typeof productInputSchema>;
 interface CompletionFields {
   nameDe: string;
   priceRappen: number;
+  kind: ProductKind;
+  unitType: "piece" | "weight" | "volume";
   contentAmount?: number | null;
   contentUnit?: string | null;
   ingredientsDe?: string | null;
@@ -76,14 +81,13 @@ interface CompletionFields {
 }
 
 function hasRequiredCompletionFields(fields: CompletionFields): boolean {
-  return Boolean(
-    fields.nameDe &&
-      fields.priceRappen > 0 &&
-      fields.contentAmount &&
-      fields.contentUnit &&
-      fields.ingredientsDe &&
-      fields.allergensConfirmed,
-  );
+  if (!fields.nameDe || !(fields.priceRappen > 0)) return false;
+  const hasContent = Boolean(fields.contentAmount && fields.contentUnit);
+  if (needsFoodLabelling(fields.kind)) {
+    return hasContent && Boolean(fields.ingredientsDe) && fields.allergensConfirmed;
+  }
+  // Non-food and cosmetics: no LIV labelling. Content only where a Grundpreis is due.
+  return fields.unitType === "piece" || hasContent;
 }
 
 function sameKeys(a: readonly string[], b: readonly string[]): boolean {
@@ -113,8 +117,9 @@ export function allergensConfirmedAtFor(
 
 // Pflichtfelder für den Shop-Auftritt, siehe .claude/skills/swiss-food-compliance/SKILL.md.
 // `hasImage` kommt vom Aufrufer statt aus einem DB-Lookup hier drin, damit
-// diese Funktion rein bleibt und ohne Datenbank testbar ist.
-export function computeDataComplete(input: ProductInput, hasImage: boolean): boolean {
+// diese Funktion rein bleibt und ohne Datenbank testbar ist. Same for `kind`:
+// the caller resolves it (input or category) before asking.
+export function computeDataComplete(input: ProductInput & { kind: ProductKind }, hasImage: boolean): boolean {
   return hasRequiredCompletionFields(input) && hasImage;
 }
 

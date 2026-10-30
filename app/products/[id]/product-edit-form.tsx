@@ -11,6 +11,7 @@ import { saveErrorLines, settle } from "@/lib/save-error";
 import type { CategoryOption } from "@/lib/category-option";
 import type { ProductInput as SaveProductInput } from "@/lib/product-schema";
 import type { ProductSummary } from "@/lib/product-summary";
+import type { ProductKind } from "@/lib/product-kind";
 import {
   parseFormNumbers,
   productSummaryToFormValues,
@@ -19,10 +20,19 @@ import {
 } from "@/app/scan/product-form-helpers";
 import { updateProduct } from "../actions";
 
-export function ProductEditForm({ product, categories }: { product: ProductSummary; categories: CategoryOption[] }) {
+export function ProductEditForm({
+  product,
+  kind: storedKind,
+  categories,
+}: {
+  product: ProductSummary;
+  kind: ProductKind;
+  categories: CategoryOption[];
+}) {
   const router = useRouter();
   const formId = useId();
   const [values, setValues] = useState<FormValues>(() => productSummaryToFormValues(product));
+  const [kind, setKind] = useState<ProductKind>(storedKind);
   const [ean, setEan] = useState(product.ean ?? "");
   const [saving, setSaving] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
@@ -55,6 +65,7 @@ export function ProductEditForm({ product, categories }: { product: ProductSumma
       categoryId: values.categoryId,
       priceRappen,
       vatRate: values.vatRate,
+      kind,
       unitType: values.unitType,
       contentAmount,
       contentUnit: values.contentUnit || undefined,
@@ -97,6 +108,8 @@ export function ProductEditForm({ product, categories }: { product: ProductSumma
         autoFocusName={false}
         errors={errors}
         vatTouchedInitially
+        kind={kind}
+        onKindChange={setKind}
       />
 
       <SaveErrorBox lines={saveError} />

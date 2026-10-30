@@ -15,6 +15,7 @@ function makeProduct(overrides: Partial<ProductForSync> = {}): ProductForSync {
     categoryId: "cat_1",
     priceRappen: 1290,
     vatRate: 2.6,
+    kind: "food",
     unitType: "weight",
     contentAmount: 5,
     contentUnit: "kg",
@@ -33,7 +34,7 @@ function makeProduct(overrides: Partial<ProductForSync> = {}): ProductForSync {
 }
 
 describe("isEligibleForShop", () => {
-  const confirmed = { allergensConfirmedAt: new Date("2026-10-05T00:00:00.000Z") };
+  const confirmed = { kind: "food", allergensConfirmedAt: new Date("2026-10-05T00:00:00.000Z") } as const;
 
   it("requires both dataComplete and isAvailable", () => {
     expect(isEligibleForShop({ dataComplete: true, isAvailable: true, ...confirmed })).toBe(true);
@@ -43,7 +44,14 @@ describe("isEligibleForShop", () => {
   });
 
   it("keeps a complete legacy row with unconfirmed allergens out of the shop", () => {
-    expect(isEligibleForShop({ dataComplete: true, isAvailable: true, allergensConfirmedAt: null })).toBe(false);
+    expect(isEligibleForShop({ dataComplete: true, isAvailable: true, kind: "food", allergensConfirmedAt: null })).toBe(false);
+    expect(isEligibleForShop({ dataComplete: true, isAvailable: true, kind: "alcohol", allergensConfirmedAt: null })).toBe(false);
+  });
+
+  it("does not ask non-food or cosmetics for an allergen check (#27)", () => {
+    expect(isEligibleForShop({ dataComplete: true, isAvailable: true, kind: "non_food", allergensConfirmedAt: null })).toBe(true);
+    expect(isEligibleForShop({ dataComplete: true, isAvailable: true, kind: "cosmetics", allergensConfirmedAt: null })).toBe(true);
+    expect(isEligibleForShop({ dataComplete: false, isAvailable: true, kind: "non_food", allergensConfirmedAt: null })).toBe(false);
   });
 
   it("keeps an archived (gelöschter) product out of the shop, and treats a missing archivedAt as active", () => {

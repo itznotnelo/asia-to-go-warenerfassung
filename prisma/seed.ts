@@ -3,7 +3,7 @@ import { PrismaPg } from "@prisma/adapter-pg";
 import { PrismaClient } from "../lib/generated/prisma/client";
 import { isValidBarcode, normalizeGtin } from "../lib/barcode";
 import { unitRuleIssues } from "../lib/unit-rules";
-import { categoryTree, type CategorySeed } from "../electron/src/category-tree";
+import { categoryTree, KIND_BY_SLUG, type CategorySeed } from "../electron/src/category-tree";
 
 const adapter = new PrismaPg({ connectionString: process.env.DATABASE_URL });
 const prisma = new PrismaClient({ adapter });
@@ -203,6 +203,8 @@ async function seedProducts(idBySlug: Map<string, string>) {
       throw new Error(`Unbekannter Kategorie-Slug in Produkt-Seed: ${product.categorySlug}`);
     }
     const ean = normalizeGtin(product.ean);
+    // Seed categories are all in the tree, so the map lookup is the whole suggestKind rule.
+    const kind = KIND_BY_SLUG.get(product.categorySlug) ?? "food";
 
     await prisma.product.upsert({
       where: { sku: product.sku },
@@ -215,6 +217,7 @@ async function seedProducts(idBySlug: Map<string, string>) {
         categoryId,
         priceRappen: product.priceRappen,
         vatRate: product.vatRate ?? 2.6,
+        kind,
         unitType: product.unitType,
         contentAmount: product.contentAmount,
         contentUnit: product.contentUnit,
@@ -233,6 +236,7 @@ async function seedProducts(idBySlug: Map<string, string>) {
         categoryId,
         priceRappen: product.priceRappen,
         vatRate: product.vatRate ?? 2.6,
+        kind,
         unitType: product.unitType,
         contentAmount: product.contentAmount,
         contentUnit: product.contentUnit,

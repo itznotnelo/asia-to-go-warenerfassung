@@ -36,6 +36,15 @@ enum DataSource {
   ai_extracted
 }
 
+// Decides which Pflichtangaben apply (swiss-food-compliance): food and alcohol need
+// ingredients, content and checked allergens; non_food and cosmetics do not.
+enum ProductKind {
+  food
+  alcohol
+  non_food
+  cosmetics
+}
+
 enum ImageType {
   front
   ingredients
@@ -91,6 +100,7 @@ model Product {
   category      Category    @relation(fields: [categoryId], references: [id], onDelete: Restrict)
   priceRappen   Int
   vatRate       Decimal     @default(2.6) @db.Decimal(3, 1)
+  kind          ProductKind @default(food)
   unitType      UnitType
   contentAmount Decimal?    @db.Decimal(10, 3)
   contentUnit   ContentUnit?

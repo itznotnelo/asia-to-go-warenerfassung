@@ -7,7 +7,8 @@ import { allergensConfirmedAtFor, computeDataComplete, priceRappenSchema, produc
 import { attachOffImages, type OffImageUrls } from "@/lib/off-images";
 import { enqueueProductSync } from "@/lib/sync/outbox";
 import { triggerBackgroundDrain } from "@/lib/sync/runner";
-import { CATEGORY_ERROR, isAssignableCategory } from "@/lib/category-guard";
+import { assignableCategory, CATEGORY_ERROR } from "@/lib/category-guard";
+import { suggestKind } from "@/lib/product-kind";
 import { SAVE_FAILED, type SaveFailure } from "@/lib/save-error";
 
 export const DUPLICATE_EAN_ERROR = "Dieser Barcode ist bereits erfasst.";
@@ -83,10 +84,12 @@ export async function createProduct(rawInput: unknown, offImageUrls?: OffImageUr
   if (!parsed.success) {
     return { ok: false, message: "Bitte Eingaben prüfen.", fieldErrors: parsed.error.flatten().fieldErrors };
   }
-  const input = parsed.data;
-  if (!(await isAssignableCategory(input.categoryId))) {
+  const category = await assignableCategory(parsed.data.categoryId);
+  if (!category) {
     return { ok: false, message: CATEGORY_ERROR, fieldErrors: { categoryId: [CATEGORY_ERROR] } };
   }
+  // The /scan forms send no kind; the category decides (a steamer under Non-Food is non_food).
+  const input = { ...parsed.data, kind: parsed.data.kind ?? suggestKind(category) };
 
   const dataComplete = computeDataComplete(input, false);
   const data = {
@@ -98,6 +101,7 @@ export async function createProduct(rawInput: unknown, offImageUrls?: OffImageUr
     categoryId: input.categoryId,
     priceRappen: input.priceRappen,
     vatRate: input.vatRate,
+    kind: input.kind,
     unitType: input.unitType,
     contentAmount: input.contentAmount ?? null,
     contentUnit: input.contentUnit ?? null,

@@ -48,7 +48,7 @@ export default async function ProductDetailPage({ params }: { params: Promise<{ 
       <ProductImages images={images} />
       <ImageUpload productId={product.id} />
 
-      <ProductEditForm product={toProductSummary(product)} categories={categories} />
+      <ProductEditForm product={toProductSummary(product)} kind={product.kind} categories={categories} />
 
       {!product.archivedAt && <DeleteSection id={product.id} nameDe={product.nameDe} sku={product.sku} />}
     </div>

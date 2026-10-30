@@ -7,6 +7,7 @@ import { allOtherCountries, COMMON_ORIGINS, isKnownCountryCode } from "@/lib/cou
 import { inputClass } from "@/lib/input-class";
 import type { ContentUnit, StorageType, UnitType } from "@/lib/generated/prisma/client";
 import type { CategoryOption } from "@/lib/category-option";
+import { KIND_OPTIONS, suggestKind, type ProductKind } from "@/lib/product-kind";
 import {
   VAT_OPTIONS,
   vatAfterCategoryChange,
@@ -29,6 +30,12 @@ interface ProductFieldsetProps {
    * only shows a hint instead of overwriting it. New products start untouched.
    */
   vatTouchedInitially?: boolean;
+  /**
+   * Warenart (#27). Only the edit page passes it; without it the select is hidden and
+   * the server takes the category's kind. A category change resets it to that kind.
+   */
+  kind?: ProductKind;
+  onKindChange?: (kind: ProductKind) => void;
 }
 
 /**
@@ -45,6 +52,8 @@ export function ProductFieldset({
   autoFocusName = true,
   errors = {},
   vatTouchedInitially = false,
+  kind,
+  onKindChange,
 }: ProductFieldsetProps) {
   const sourcedFields = sourced ?? new Set<keyof FormValues>();
   const [vatTouched, setVatTouched] = useState(vatTouchedInitially);
@@ -56,6 +65,7 @@ export function ProductFieldset({
     onChange("categoryId", categoryId);
     onChange("vatRate", next.vatRate);
     setSuggestedVat(next.suggested);
+    onKindChange?.(suggestKind(category));
   }
 
   function handleVatChange(rate: number) {
@@ -145,6 +155,23 @@ export function ProductFieldset({
             </span>
           )}
         </Field>
+
+        {kind !== undefined && onKindChange && (
+          <Field label="Warenart" htmlFor={`${formId}-kind`}>
+            <select
+              id={`${formId}-kind`}
+              value={kind}
+              onChange={(e) => onKindChange(e.target.value as ProductKind)}
+              className={inputClass()}
+            >
+              {KIND_OPTIONS.map((option) => (
+                <option key={option.kind} value={option.kind}>
+                  {option.label}
+                </option>
+              ))}
+            </select>
+          </Field>
+        )}
 
         <Field label="Preis (CHF)" htmlFor={`${formId}-price`} error={errors.priceChf}>
           <input

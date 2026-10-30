@@ -31,7 +31,9 @@ export async function updateProduct(rawInput: unknown): Promise<UpdateProductRes
   if (!existing) {
     return { ok: false, message: "Artikel nicht gefunden." };
   }
-  const dataComplete = computeDataComplete(input, existing.images.length > 0);
+  // An edit without a kind (older client) keeps the stored one.
+  const kind = input.kind ?? existing.kind;
+  const dataComplete = computeDataComplete({ ...input, kind }, existing.images.length > 0);
 
   try {
     const product = await prisma.product.update({
@@ -45,6 +47,7 @@ export async function updateProduct(rawInput: unknown): Promise<UpdateProductRes
         categoryId: input.categoryId,
         priceRappen: input.priceRappen,
         vatRate: input.vatRate,
+        kind,
         unitType: input.unitType,
         contentAmount: input.contentAmount ?? null,
         contentUnit: input.contentUnit ?? null,
@@ -125,7 +128,7 @@ export async function uploadProductImage(formData: FormData): Promise<UploadImag
   let dataComplete = product.dataComplete;
   if (!dataComplete) {
     const summary = toProductSummary(product);
-    dataComplete = isProductComplete(summary, true);
+    dataComplete = isProductComplete({ ...summary, kind: product.kind }, true);
     if (dataComplete) {
       await prisma.product.update({ where: { id: product.id }, data: { dataComplete: true } });
     }

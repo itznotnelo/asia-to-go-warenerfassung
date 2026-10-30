@@ -5,12 +5,17 @@
 
 export type SuggestedVatRate = 2.6 | 8.1;
 
+/** Same values as Product.kind in prisma/schema.prisma (enum ProductKind). */
+export type SuggestedProductKind = "food" | "alcohol" | "non_food" | "cosmetics";
+
 export interface CategorySeed {
   name: string;
   slug: string;
   sortOrder: number;
   /** Suggested MwSt for articles in this category. Children inherit it. Default 2.6. */
   vatRate?: SuggestedVatRate;
+  /** Suggested Warenart; decides which Pflichtfelder apply. Children inherit it. Default food. */
+  kind?: SuggestedProductKind;
   children?: CategorySeed[];
 }
 
@@ -25,7 +30,7 @@ export const categoryTree: CategorySeed[] = [
     children: [
       { name: "Softdrinks & Säfte", slug: "softdrinks-saefte", sortOrder: 10 },
       { name: "Tee & Kaffee", slug: "tee-kaffee", sortOrder: 20 },
-      { name: "Alkohol", slug: "alkohol", sortOrder: 30, vatRate: 8.1 },
+      { name: "Alkohol", slug: "alkohol", sortOrder: 30, vatRate: 8.1, kind: "alcohol" },
     ],
   },
   {
@@ -76,10 +81,11 @@ export const categoryTree: CategorySeed[] = [
     slug: "non-food",
     sortOrder: 80,
     vatRate: 8.1,
+    kind: "non_food",
     children: [
       { name: "Küchenutensilien", slug: "kuechenutensilien", sortOrder: 10 },
       { name: "Geschirr & Tischkultur", slug: "geschirr-tischkultur", sortOrder: 20 },
-      { name: "Kosmetik & Körperpflege", slug: "kosmetik-koerperpflege", sortOrder: 30 },
+      { name: "Kosmetik & Körperpflege", slug: "kosmetik-koerperpflege", sortOrder: 30, kind: "cosmetics" },
       { name: "Haushalt", slug: "haushalt", sortOrder: 40 },
     ],
   },
@@ -96,3 +102,15 @@ function collectVatRates(nodes: CategorySeed[], inherited: SuggestedVatRate | un
 
 /** slug -> suggested rate, with inheritance already applied. Slugs not in here get 2.6. */
 export const VAT_RATE_BY_SLUG: ReadonlyMap<string, SuggestedVatRate> = collectVatRates(categoryTree, undefined, new Map());
+
+function collectKinds(nodes: CategorySeed[], inherited: SuggestedProductKind | undefined, into: Map<string, SuggestedProductKind>) {
+  for (const node of nodes) {
+    const kind = node.kind ?? inherited;
+    if (kind !== undefined) into.set(node.slug, kind);
+    collectKinds(node.children ?? [], kind, into);
+  }
+  return into;
+}
+
+/** slug -> suggested kind, with inheritance already applied. Slugs not in here are food. */
+export const KIND_BY_SLUG: ReadonlyMap<string, SuggestedProductKind> = collectKinds(categoryTree, undefined, new Map());

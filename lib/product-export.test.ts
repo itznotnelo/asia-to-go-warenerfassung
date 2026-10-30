@@ -31,6 +31,8 @@ const product: Product = {
   storageType: "ambient",
   ingredientsDe: "Zucker, Wasser",
   allergens: ["fish", "gluten"],
+  traces: ["sesame"],
+  allergensConfirmedAt: new Date("2026-01-03T10:30:00.000Z"),
   nutrition: null,
   isAvailable: true,
   stockQty: null,
@@ -51,6 +53,14 @@ describe("toExportRow", () => {
   it("joins allergens with a semicolon", () => {
     const row = toExportRow({ ...product, category });
     expect(row.allergens).toBe("fish;gluten");
+  });
+
+  it("keeps traces and the allergen confirmation in the backup", () => {
+    expect(toExportRow({ ...product, category })).toMatchObject({
+      traces: "sesame",
+      allergensConfirmedAt: "2026-01-03T10:30:00.000Z",
+    });
+    expect(toExportRow({ ...product, category, allergensConfirmedAt: null }).allergensConfirmedAt).toBe("");
   });
 
   it("uses the category name, not the id", () => {

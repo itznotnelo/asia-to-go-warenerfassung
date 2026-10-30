@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { computeDataComplete, isProductComplete, MAX_PRICE_RAPPEN, productInputSchema, type ProductInput } from "./product-schema";
+import { allergensConfirmedAtFor, computeDataComplete, isProductComplete, MAX_PRICE_RAPPEN, productInputSchema, type ProductInput } from "./product-schema";
 
 const complete: ProductInput = {
   ean: "3017620422003",
@@ -13,6 +13,8 @@ const complete: ProductInput = {
   storageType: "ambient",
   ingredientsDe: "Wasser, Sojabohnen, Salz",
   allergens: ["soybeans"],
+  traces: [],
+  allergensConfirmed: true,
   dataSource: "manual",
 };
 
@@ -61,6 +63,52 @@ describe("computeDataComplete", () => {
   it("is incomplete with a zero or negative price", () => {
     expect(computeDataComplete({ ...complete, priceRappen: 0 }, true)).toBe(false);
   });
+
+  it("is incomplete while the allergens are not confirmed (hard rule 5)", () => {
+    expect(computeDataComplete({ ...complete, allergensConfirmed: false }, true)).toBe(false);
+  });
+});
+
+describe("productInputSchema allergens", () => {
+  it("defaults to unconfirmed with empty lists when the client sends nothing", () => {
+    const parsed = productInputSchema.parse({ ...complete, allergens: undefined, traces: undefined, allergensConfirmed: undefined });
+    expect(parsed.allergens).toEqual([]);
+    expect(parsed.traces).toEqual([]);
+    expect(parsed.allergensConfirmed).toBe(false);
+  });
+
+  it("rejects keys outside the 14 canonical allergens", () => {
+    expect(productInputSchema.safeParse({ ...complete, allergens: ["soybeans", "en:soy"] }).success).toBe(false);
+    expect(productInputSchema.safeParse({ ...complete, traces: ["peanut"] }).success).toBe(false);
+    expect(productInputSchema.safeParse({ ...complete, traces: ["peanuts", "sesame"] }).success).toBe(true);
+  });
+});
+
+describe("allergensConfirmedAtFor", () => {
+  const now = new Date("2026-10-30T09:00:00.000Z");
+  const earlier = new Date("2026-10-01T08:00:00.000Z");
+  const existing = { allergensConfirmedAt: earlier, allergens: ["soybeans", "gluten"], traces: ["sesame"] };
+
+  it("is null whenever the box is not ticked, even if it was confirmed before", () => {
+    expect(allergensConfirmedAtFor({ allergensConfirmed: false, allergens: [], traces: [] }, null, now)).toBeNull();
+    expect(allergensConfirmedAtFor({ ...existing, allergensConfirmed: false }, existing, now)).toBeNull();
+  });
+
+  it("stamps now on a first confirmation", () => {
+    expect(allergensConfirmedAtFor({ allergensConfirmed: true, allergens: ["milk"], traces: [] }, null, now)).toBe(now);
+    const unconfirmed = { ...existing, allergensConfirmedAt: null };
+    expect(allergensConfirmedAtFor({ ...existing, allergensConfirmed: true }, unconfirmed, now)).toBe(now);
+  });
+
+  it("keeps the earlier timestamp when the lists are unchanged (order does not matter)", () => {
+    const input = { allergensConfirmed: true, allergens: ["gluten", "soybeans"], traces: ["sesame"] };
+    expect(allergensConfirmedAtFor(input, existing, now)).toBe(earlier);
+  });
+
+  it("re-stamps when allergens or traces changed", () => {
+    expect(allergensConfirmedAtFor({ allergensConfirmed: true, allergens: ["gluten"], traces: ["sesame"] }, existing, now)).toBe(now);
+    expect(allergensConfirmedAtFor({ allergensConfirmed: true, allergens: ["soybeans", "gluten"], traces: [] }, existing, now)).toBe(now);
+  });
 });
 
 describe("isProductComplete", () => {
@@ -70,7 +118,12 @@ describe("isProductComplete", () => {
     contentAmount: 250,
     contentUnit: "ml",
     ingredientsDe: "Wasser, Sojabohnen, Salz",
+    allergensConfirmed: true,
   };
+
+  it("needs the allergen confirmation on a saved product too", () => {
+    expect(isProductComplete({ ...savedProduct, allergensConfirmed: false }, true)).toBe(false);
+  });
 
   it("applies the same rule as computeDataComplete, but to a saved product shape", () => {
     expect(isProductComplete(savedProduct, true)).toBe(true);

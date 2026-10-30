@@ -21,6 +21,7 @@ function makeProduct(overrides: Partial<ProductForSync> = {}): ProductForSync {
     storageType: "ambient",
     ingredientsDe: "Reis",
     allergens: [],
+    allergensConfirmedAt: new Date("2026-10-05T00:00:00.000Z"),
     nutrition: null,
     isAvailable: true,
     stockQty: 10,
@@ -32,11 +33,27 @@ function makeProduct(overrides: Partial<ProductForSync> = {}): ProductForSync {
 }
 
 describe("isEligibleForShop", () => {
+  const confirmed = { allergensConfirmedAt: new Date("2026-10-05T00:00:00.000Z") };
+
   it("requires both dataComplete and isAvailable", () => {
-    expect(isEligibleForShop({ dataComplete: true, isAvailable: true })).toBe(true);
-    expect(isEligibleForShop({ dataComplete: true, isAvailable: false })).toBe(false);
-    expect(isEligibleForShop({ dataComplete: false, isAvailable: true })).toBe(false);
-    expect(isEligibleForShop({ dataComplete: false, isAvailable: false })).toBe(false);
+    expect(isEligibleForShop({ dataComplete: true, isAvailable: true, ...confirmed })).toBe(true);
+    expect(isEligibleForShop({ dataComplete: true, isAvailable: false, ...confirmed })).toBe(false);
+    expect(isEligibleForShop({ dataComplete: false, isAvailable: true, ...confirmed })).toBe(false);
+    expect(isEligibleForShop({ dataComplete: false, isAvailable: false, ...confirmed })).toBe(false);
+  });
+
+  it("keeps a complete legacy row with unconfirmed allergens out of the shop", () => {
+    expect(isEligibleForShop({ dataComplete: true, isAvailable: true, allergensConfirmedAt: null })).toBe(false);
+  });
+});
+
+describe("buildProductOp allergen gate", () => {
+  it("deletes a product whose allergens were never confirmed", () => {
+    expect(buildProductOp(makeProduct({ allergensConfirmedAt: null }), [])).toEqual({ op: "delete", id: "prod_1" });
+  });
+
+  it("publishes a confirmed product", () => {
+    expect(buildProductOp(makeProduct(), []).op).toBe("upsert");
   });
 });
 

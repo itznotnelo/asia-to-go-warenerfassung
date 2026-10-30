@@ -38,6 +38,14 @@ describe("mappedOffToFormValues", () => {
     expect(without.initial.allergens).toBeUndefined();
   });
 
+  it("pre-fills OFF allergens and traces as suggestions, never as confirmed (hard rule 5)", () => {
+    const { initial, sourced } = mappedOffToFormValues({ ...emptyMapped, allergens: ["gluten"], traces: ["sesame"] });
+    expect(initial.allergens).toEqual(["gluten"]);
+    expect(initial.traces).toEqual(["sesame"]);
+    expect(sourced.has("traces")).toBe(true);
+    expect(initial).not.toHaveProperty("allergensConfirmed");
+  });
+
   it("produces an empty result for a fully empty mapping", () => {
     const { initial, sourced } = mappedOffToFormValues(emptyMapped);
     expect(initial).toEqual({});
@@ -83,9 +91,17 @@ describe("duplicatedFieldsFromLastSaved", () => {
     storageType: "ambient",
     ingredientsDe: "Wasser, Sojabohnen, Salz",
     allergens: ["soybeans", "gluten"],
+    traces: ["sesame"],
+    allergensConfirmed: true,
     notes: "Testnotiz",
     dataSource: "manual",
   };
+
+  it("copies the allergen lists but never the confirmation", () => {
+    const duplicated = duplicatedFieldsFromLastSaved(lastSaved);
+    expect(duplicated.traces).toEqual(["sesame"]);
+    expect(duplicated.allergensConfirmed).toBe(false);
+  });
 
   it("carries over brand, category and allergens for a same-brand variant", () => {
     const duplicated = duplicatedFieldsFromLastSaved(lastSaved);
@@ -120,11 +136,18 @@ describe("productSummaryToFormValues", () => {
     storageType: "ambient",
     ingredientsDe: "Wasser, Sojabohnen, Salz",
     allergens: ["soybeans"],
+    traces: [],
+    allergensConfirmed: true,
     isAvailable: true,
     dataSource: "manual",
     dataComplete: false,
     notes: null,
   };
+
+  it("shows a stored confirmation as ticked, and a missing one as unticked", () => {
+    expect(productSummaryToFormValues(product).allergensConfirmed).toBe(true);
+    expect(productSummaryToFormValues({ ...product, allergensConfirmed: false }).allergensConfirmed).toBe(false);
+  });
 
   it("formats the price back into a CHF string for the controlled input", () => {
     expect(productSummaryToFormValues(product).priceChf).toBe("4.95");
@@ -165,6 +188,7 @@ describe("buildQuickCaptureInput", () => {
     expect(input.contentUnit).toBeUndefined();
     expect(input.ingredientsDe).toBeUndefined();
     expect(input.allergens).toEqual([]);
+    expect(input.allergensConfirmed).toBe(false);
   });
 
   it("still auto-suggests the correct VAT rate from the category", () => {

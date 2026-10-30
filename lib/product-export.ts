@@ -21,6 +21,8 @@ export interface ProductExportRow {
   storageType: string;
   ingredientsDe: string;
   allergens: string;
+  traces: string;
+  allergensConfirmedAt: string;
   isAvailable: boolean;
   stockQty: number | "";
   dataSource: string;
@@ -49,6 +51,8 @@ export function toExportRow(product: Product & { category: Category }): ProductE
     storageType: product.storageType,
     ingredientsDe: product.ingredientsDe ?? "",
     allergens: product.allergens.join(";"),
+    traces: product.traces.join(";"),
+    allergensConfirmedAt: product.allergensConfirmedAt?.toISOString() ?? "",
     isAvailable: product.isAvailable,
     stockQty: product.stockQty ?? "",
     dataSource: product.dataSource,

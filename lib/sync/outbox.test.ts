@@ -39,6 +39,8 @@ function makeProductRow(overrides: Record<string, unknown> = {}) {
     storageType: "ambient",
     ingredientsDe: "Reis",
     allergens: [],
+    traces: [],
+    allergensConfirmedAt: new Date("2026-10-05T00:00:00.000Z"),
     nutrition: null,
     isAvailable: true,
     stockQty: 10,

@@ -33,8 +33,11 @@ export function ProductFieldset({ formId, values, onChange, categories, sourced,
     onChange("vatRate", suggestVatRate(category));
   }
 
-  function toggleAllergen(key: string) {
-    onChange("allergens", values.allergens.includes(key) ? values.allergens.filter((a) => a !== key) : [...values.allergens, key]);
+  // Any change to the lists voids an earlier "geprüft" tick: the user confirms what is on screen.
+  function toggleKey(field: "allergens" | "traces", key: string) {
+    const list = values[field];
+    onChange(field, list.includes(key) ? list.filter((a) => a !== key) : [...list, key]);
+    onChange("allergensConfirmed", false);
   }
 
   return (
@@ -191,31 +194,37 @@ export function ProductFieldset({ formId, values, onChange, categories, sourced,
         />
       </Field>
 
-      <div>
-        <span className="flex items-center gap-2 text-sm text-muted-foreground">
-          Allergene
-          {sourcedFields.has("allergens") && <SourcedBadge />}
-          <span className="text-xs">— vom Nutzer zu prüfen, nie ungeprüft übernehmen</span>
+      <AllergenChips
+        label="Allergene"
+        sourced={sourcedFields.has("allergens")}
+        selected={values.allergens}
+        onToggle={(key) => toggleKey("allergens", key)}
+      />
+
+      <AllergenChips
+        label="Kann Spuren enthalten von"
+        sourced={sourcedFields.has("traces")}
+        selected={values.traces}
+        onToggle={(key) => toggleKey("traces", key)}
+      />
+
+      <label htmlFor={`${formId}-allergensConfirmed`} className="flex items-start gap-3">
+        <input
+          id={`${formId}-allergensConfirmed`}
+          type="checkbox"
+          checked={values.allergensConfirmed}
+          onChange={(e) => onChange("allergensConfirmed", e.target.checked)}
+          className="mt-0.5 size-5 accent-primary"
+        />
+        <span className="flex flex-col gap-0.5">
+          <span className="text-sm font-medium">Allergene geprüft</span>
+          <span className="text-xs text-muted-foreground">
+            {values.allergensConfirmed
+              ? "Allergene und Spuren stimmen mit der Packung überein."
+              : "Mit der Packung vergleichen und abhaken. Ohne Häkchen erscheint der Artikel nicht im Shop."}
+          </span>
         </span>
-        <div className="mt-2 flex flex-wrap gap-2">
-          {ALLERGEN_KEYS.map((key) => {
-            const active = values.allergens.includes(key);
-            return (
-              <button
-                type="button"
-                key={key}
-                onClick={() => toggleAllergen(key)}
-                className={cn(
-                  "rounded-full border px-3 py-1.5 text-sm transition-colors",
-                  active ? "border-primary bg-primary/20 text-primary" : "border-border text-muted-foreground hover:text-foreground",
-                )}
-              >
-                {ALLERGEN_LABELS[key]}
-              </button>
-            );
-          })}
-        </div>
-      </div>
+      </label>
 
       <Field label="Notiz (intern)" htmlFor={`${formId}-notes`}>
         <input
@@ -226,6 +235,46 @@ export function ProductFieldset({ formId, values, onChange, categories, sourced,
         />
       </Field>
     </>
+  );
+}
+
+function AllergenChips({
+  label,
+  sourced,
+  selected,
+  onToggle,
+}: {
+  label: string;
+  sourced: boolean;
+  selected: string[];
+  onToggle: (key: string) => void;
+}) {
+  return (
+    <div role="group" aria-label={label}>
+      <span className="flex items-center gap-2 text-sm text-muted-foreground">
+        {label}
+        {sourced && <SourcedBadge />}
+      </span>
+      <div className="mt-2 flex flex-wrap gap-2">
+        {ALLERGEN_KEYS.map((key) => {
+          const active = selected.includes(key);
+          return (
+            <button
+              type="button"
+              key={key}
+              aria-pressed={active}
+              onClick={() => onToggle(key)}
+              className={cn(
+                "rounded-full border px-3 py-1.5 text-sm transition-colors",
+                active ? "border-primary bg-primary/20 text-primary" : "border-border text-muted-foreground hover:text-foreground",
+              )}
+            >
+              {ALLERGEN_LABELS[key]}
+            </button>
+          );
+        })}
+      </div>
+    </div>
   );
 }
 

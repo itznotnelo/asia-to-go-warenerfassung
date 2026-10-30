@@ -65,6 +65,8 @@ export function ProductForm({ ean, categories, initial, sourced, lastSaved, data
       storageType: values.storageType,
       ingredientsDe: values.ingredientsDe || undefined,
       allergens: values.allergens,
+      traces: values.traces,
+      allergensConfirmed: values.allergensConfirmed,
       notes: values.notes || undefined,
       dataSource,
     };

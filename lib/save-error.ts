@@ -20,6 +20,8 @@ const FIELD_LABELS: Record<string, string> = {
   storageType: "Lagerung",
   ingredientsDe: "Zutaten",
   allergens: "Allergene",
+  traces: "Spuren",
+  allergensConfirmed: "Allergene geprüft",
   notes: "Notiz",
   dataSource: "Quelle",
 };

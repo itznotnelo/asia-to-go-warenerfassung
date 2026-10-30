@@ -19,6 +19,8 @@ const product: ProductSummary = {
   storageType: "ambient",
   ingredientsDe: null,
   allergens: [],
+  traces: [],
+  allergensConfirmed: false,
   isAvailable: true,
   dataSource: "manual",
   dataComplete: false,

@@ -19,6 +19,9 @@ export interface FormValues {
   storageType: StorageType;
   ingredientsDe: string;
   allergens: string[];
+  traces: string[];
+  /** The "Allergene geprüft" tick. Never pre-set from OFF (hard rule 5). */
+  allergensConfirmed: boolean;
   notes: string;
 }
 
@@ -36,6 +39,8 @@ export const EMPTY_VALUES: FormValues = {
   storageType: "ambient",
   ingredientsDe: "",
   allergens: [],
+  traces: [],
+  allergensConfirmed: false,
   notes: "",
 };
 
@@ -61,6 +66,11 @@ export function mappedOffToFormValues(mapped: MappedOffProduct): { initial: Part
     initial.allergens = mapped.allergens;
     sourced.add("allergens");
   }
+  if (mapped.traces.length > 0) {
+    initial.traces = mapped.traces;
+    sourced.add("traces");
+  }
+  // OFF lists are suggestions only: allergensConfirmed stays false (hard rule 5).
 
   return { initial, sourced };
 }
@@ -81,6 +91,8 @@ export function productSummaryToFormValues(product: ProductSummary): FormValues 
     storageType: product.storageType,
     ingredientsDe: product.ingredientsDe ?? "",
     allergens: product.allergens,
+    traces: product.traces,
+    allergensConfirmed: product.allergensConfirmed,
     notes: product.notes ?? "",
   };
 }
@@ -141,6 +153,8 @@ export function buildQuickCaptureInput(params: {
     unitType: "piece",
     storageType: "ambient",
     allergens: [],
+    traces: [],
+    allergensConfirmed: false,
     dataSource: params.dataSource,
   };
 }
@@ -150,6 +164,8 @@ export function buildQuickCaptureInput(params: {
  * übernimmt alle Felder des zuletzt gespeicherten Artikels ausser Preis und
  * Inhaltsmenge, die bei einer Variante fast immer abweichen — der Barcode
  * bleibt ohnehin der des aktuell offenen Scans, nicht Teil von FormValues.
+ * Allergene werden übernommen, die Prüfung nicht: eine Variante kann andere
+ * Allergene haben, also muss sie jemand neu bestätigen.
  */
 export function duplicatedFieldsFromLastSaved(lastSaved: SaveProductInput): Partial<FormValues> {
   return {
@@ -164,6 +180,8 @@ export function duplicatedFieldsFromLastSaved(lastSaved: SaveProductInput): Part
     storageType: lastSaved.storageType,
     ingredientsDe: lastSaved.ingredientsDe ?? "",
     allergens: lastSaved.allergens,
+    traces: lastSaved.traces,
+    allergensConfirmed: false,
     notes: lastSaved.notes ?? "",
   };
 }

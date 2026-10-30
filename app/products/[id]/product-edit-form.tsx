@@ -62,6 +62,8 @@ export function ProductEditForm({ product, categories }: { product: ProductSumma
       storageType: values.storageType,
       ingredientsDe: values.ingredientsDe || undefined,
       allergens: values.allergens,
+      traces: values.traces,
+      allergensConfirmed: values.allergensConfirmed,
       notes: values.notes || undefined,
       dataSource: product.dataSource,
     };

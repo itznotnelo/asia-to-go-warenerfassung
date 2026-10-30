@@ -44,6 +44,8 @@ function savedRow(sku: string) {
     contentAmount: null,
     contentUnit: null,
     ingredientsDe: null,
+    traces: [],
+    allergensConfirmedAt: null,
     notes: null,
     isAvailable: true,
     dataComplete: false,
@@ -91,6 +93,22 @@ describe("createProduct", () => {
     productMock.create.mockRejectedValue(prismaError("P2002"));
     await expect(createProduct(INPUT)).resolves.toEqual({ ok: false, message: SAVE_FAILED });
     expect(productMock.create).toHaveBeenCalledTimes(2);
+  });
+
+  it("never stores OFF allergens as confirmed unless the user ticked the box", async () => {
+    productMock.create.mockResolvedValue(savedRow("ASIA-00042"));
+    await createProduct({ ...INPUT, dataSource: "openfoodfacts", allergens: ["gluten"], traces: ["sesame"] });
+
+    const data = productMock.create.mock.calls[0][0].data;
+    expect(data.allergensConfirmedAt).toBeNull();
+    expect(data.dataComplete).toBe(false);
+    expect(data.traces).toEqual(["sesame"]);
+  });
+
+  it("stamps allergensConfirmedAt when the user confirmed", async () => {
+    productMock.create.mockResolvedValue(savedRow("ASIA-00042"));
+    await createProduct({ ...INPUT, allergens: ["gluten"], allergensConfirmed: true });
+    expect(productMock.create.mock.calls[0][0].data.allergensConfirmedAt).toBeInstanceOf(Date);
   });
 
   it("rethrows other DB errors so the client shows 'Speichern fehlgeschlagen'", async () => {

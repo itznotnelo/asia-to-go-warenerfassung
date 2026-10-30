@@ -36,6 +36,7 @@ export interface ProductForSync {
   storageType: string;
   ingredientsDe: string | null;
   allergens: string[];
+  allergensConfirmedAt: Date | null;
   nutrition: unknown;
   isAvailable: boolean;
   stockQty: number | null;
@@ -72,9 +73,14 @@ export function toProductForSync(row: ProductRowForSync): ProductForSync {
 
 // Mirrors the backend's own publish rule (atg-shop-backend, src/routes/catalogue.js:
 // `WHERE is_available = 1 AND data_complete = 1`) - a product that doesn't meet
-// this belongs out of the shop, not in as an incomplete row.
-export function isEligibleForShop(product: Pick<ProductForSync, "dataComplete" | "isAvailable">): boolean {
-  return product.dataComplete && product.isAvailable;
+// this belongs out of the shop, not in as an incomplete row. Allergens must be
+// user-confirmed too (hard rule 5): checked here as well as in dataComplete, so
+// rows saved before the confirmation flag existed drop out of the shop
+// without a data migration.
+export function isEligibleForShop(
+  product: Pick<ProductForSync, "dataComplete" | "isAvailable" | "allergensConfirmedAt">,
+): boolean {
+  return product.dataComplete && product.isAvailable && product.allergensConfirmedAt !== null;
 }
 
 /** Only images already pushed to R2 (r2Key set) can go into a publish payload. */

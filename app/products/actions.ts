@@ -4,7 +4,7 @@ import { z } from "zod";
 import { Prisma } from "@/lib/generated/prisma/client";
 import { prisma } from "@/lib/prisma";
 import { toProductSummary, type ProductSummary } from "@/lib/product-summary";
-import { computeDataComplete, isProductComplete, productInputSchema } from "@/lib/product-schema";
+import { allergensConfirmedAtFor, computeDataComplete, isProductComplete, productInputSchema } from "@/lib/product-schema";
 import { storeUploadedImage } from "@/lib/images";
 import { enqueueProductDeleteSync, enqueueProductSync } from "@/lib/sync/outbox";
 import { triggerBackgroundDrain } from "@/lib/sync/runner";
@@ -52,6 +52,8 @@ export async function updateProduct(rawInput: unknown): Promise<UpdateProductRes
         storageType: input.storageType,
         ingredientsDe: input.ingredientsDe || null,
         allergens: input.allergens,
+        traces: input.traces,
+        allergensConfirmedAt: allergensConfirmedAtFor(input, existing, new Date()),
         notes: input.notes || null,
         dataSource: input.dataSource,
         dataComplete,

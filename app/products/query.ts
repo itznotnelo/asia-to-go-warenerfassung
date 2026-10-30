@@ -7,13 +7,18 @@ export interface ProductListFilters {
   dataSource?: string;
   /** "true" | "false" | undefined (= alle) */
   complete?: string;
+  /** "true" = nur gelöschte (Papierkorb); sonst nur aktive Artikel. */
+  archived?: string;
 }
 
 const STORAGE_TYPES = new Set(["ambient", "chilled", "frozen"]);
 const DATA_SOURCES = new Set(["openfoodfacts", "manual", "ai_extracted"]);
 
 export function buildProductWhere(filters: ProductListFilters): Prisma.ProductWhereInput {
-  const where: Prisma.ProductWhereInput = {};
+  // Soft-deleted articles (review should #34) only show up in the "Gelöscht" view.
+  const where: Prisma.ProductWhereInput = {
+    archivedAt: filters.archived === "true" ? { not: null } : null,
+  };
 
   if (filters.q?.trim()) {
     const q = filters.q.trim();

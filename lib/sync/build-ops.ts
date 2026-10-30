@@ -42,6 +42,8 @@ export interface ProductForSync {
   stockQty: number | null;
   dataComplete: boolean;
   notes: string | null;
+  /** Soft-deleted (review should #34). Optional so rows/fixtures from before the column stay valid. */
+  archivedAt?: Date | null;
   updatedAt: Date;
 }
 
@@ -76,11 +78,12 @@ export function toProductForSync(row: ProductRowForSync): ProductForSync {
 // this belongs out of the shop, not in as an incomplete row. Allergens must be
 // user-confirmed too (hard rule 5): checked here as well as in dataComplete, so
 // rows saved before the confirmation flag existed drop out of the shop
-// without a data migration.
+// without a data migration. An archived ("gelöschter") product is never
+// eligible, so any re-queue during or after its grace period stays a delete.
 export function isEligibleForShop(
-  product: Pick<ProductForSync, "dataComplete" | "isAvailable" | "allergensConfirmedAt">,
+  product: Pick<ProductForSync, "dataComplete" | "isAvailable" | "allergensConfirmedAt" | "archivedAt">,
 ): boolean {
-  return product.dataComplete && product.isAvailable && product.allergensConfirmedAt !== null;
+  return product.dataComplete && product.isAvailable && product.allergensConfirmedAt !== null && !product.archivedAt;
 }
 
 /** Only images already pushed to R2 (r2Key set) can go into a publish payload. */

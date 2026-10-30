@@ -17,7 +17,7 @@ import {
   type FormValues,
   type NumberFieldErrors,
 } from "@/app/scan/product-form-helpers";
-import { deleteProduct, updateProduct } from "../actions";
+import { updateProduct } from "../actions";
 
 export function ProductEditForm({ product, categories }: { product: ProductSummary; categories: CategoryOption[] }) {
   const router = useRouter();
@@ -25,7 +25,6 @@ export function ProductEditForm({ product, categories }: { product: ProductSumma
   const [values, setValues] = useState<FormValues>(() => productSummaryToFormValues(product));
   const [ean, setEan] = useState(product.ean ?? "");
   const [saving, setSaving] = useState(false);
-  const [deleting, setDeleting] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
   const [errors, setErrors] = useState<NumberFieldErrors>({});
   const [saveError, setSaveError] = useState<string[] | null>(null);
@@ -78,20 +77,6 @@ export function ProductEditForm({ product, categories }: { product: ProductSumma
     router.refresh();
   }
 
-  async function handleDelete() {
-    if (!window.confirm(`„${product.nameDe}" wirklich löschen?`)) return;
-    setDeleting(true);
-    setMessage(null);
-    setSaveError(null);
-    const result = await settle(() => deleteProduct(product.id));
-    if (result.ok) {
-      router.push("/products");
-    } else {
-      setDeleting(false);
-      setSaveError(saveErrorLines(result));
-    }
-  }
-
   return (
     <form onSubmit={handleSubmit} className="flex flex-col gap-5 rounded-xl border border-border bg-card p-6">
       <div className="flex items-center justify-between">
@@ -120,9 +105,7 @@ export function ProductEditForm({ product, categories }: { product: ProductSumma
         <Button type="submit" size="lg" className="h-14 px-6 text-base" disabled={saving}>
           {saving ? "Speichert …" : "Speichern"}
         </Button>
-        <Button type="button" variant="destructive" size="lg" className="h-14 px-6 text-base" disabled={deleting} onClick={handleDelete}>
-          {deleting ? "Löscht …" : "Löschen"}
-        </Button>
+        {/* Löschen sits in its own section below the form (review should #34, archive-actions.tsx). */}
         <Link href="/products" className="text-sm text-muted-foreground hover:text-foreground">
           Zurück zur Liste
         </Link>

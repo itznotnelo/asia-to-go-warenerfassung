@@ -58,6 +58,14 @@ export function ProductsFilterBar({ categories, filters }: { categories: Categor
         </select>
       </label>
 
+      <label className="flex flex-col gap-1.5">
+        <span className="text-sm text-muted-foreground">Anzeigen</span>
+        <select name="archived" defaultValue={filters.archived ?? ""} className={inputClass() + " w-auto"}>
+          <option value="">Aktive Artikel</option>
+          <option value="true">Gelöschte Artikel</option>
+        </select>
+      </label>
+
       <button type="submit" className="h-11 rounded-lg bg-primary px-4 text-sm font-medium text-primary-foreground hover:bg-primary/80">
         Filtern
       </button>

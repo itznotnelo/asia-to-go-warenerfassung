@@ -45,6 +45,22 @@ describe("isEligibleForShop", () => {
   it("keeps a complete legacy row with unconfirmed allergens out of the shop", () => {
     expect(isEligibleForShop({ dataComplete: true, isAvailable: true, allergensConfirmedAt: null })).toBe(false);
   });
+
+  it("keeps an archived (gelöschter) product out of the shop, and treats a missing archivedAt as active", () => {
+    const ready = { dataComplete: true, isAvailable: true, ...confirmed };
+    expect(isEligibleForShop({ ...ready, archivedAt: new Date("2026-10-30T16:00:00.000Z") })).toBe(false);
+    expect(isEligibleForShop({ ...ready, archivedAt: null })).toBe(true);
+    expect(isEligibleForShop(ready)).toBe(true);
+  });
+});
+
+describe("buildProductOp archive gate (review should #34)", () => {
+  it("turns an otherwise publishable archived product into a delete", () => {
+    expect(buildProductOp(makeProduct({ archivedAt: new Date("2026-10-30T16:00:00.000Z") }), [])).toEqual({
+      op: "delete",
+      id: "prod_1",
+    });
+  });
 });
 
 describe("buildProductOp allergen gate", () => {

@@ -11,7 +11,13 @@ export async function GET(request: Request) {
   const requested = new URL(request.url).searchParams.get("format");
   const format = requested === "csv" || requested === "excel" ? requested : "json";
 
-  const products = await prisma.product.findMany({ include: { category: true }, orderBy: { sku: "asc" } });
+  // Gelöschte (archivierte) Artikel gehören nicht in die Artikelliste; die
+  // Datensicherung (pg_dump) enthält sie weiterhin.
+  const products = await prisma.product.findMany({
+    where: { archivedAt: null },
+    include: { category: true },
+    orderBy: { sku: "asc" },
+  });
   const rows = products.map(toExportRow);
   const timestamp = new Date().toISOString().slice(0, 10);
 

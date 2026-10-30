@@ -21,7 +21,7 @@ class SyncHttpError extends Error {
 }
 vi.mock("./client", () => ({ publishOps: publishOpsMock, SyncHttpError }));
 
-const { drainOutbox, isPermanentFailure, MAX_ATTEMPTS, retryStuckOutbox, sortForPublish, unchangedSince } =
+const { drainOutbox, isPermanentFailure, MAX_ATTEMPTS, readyToSend, retryStuckOutbox, sortForPublish, unchangedSince } =
   await import("./drain");
 
 const T0 = new Date("2026-10-30T08:00:00.000Z");
@@ -62,6 +62,15 @@ describe("unchangedSince", () => {
   });
 });
 
+describe("readyToSend", () => {
+  it("lets through rows without notBefore or whose notBefore has passed", () => {
+    expect(readyToSend(T0)).toEqual({
+      attempts: { lt: MAX_ATTEMPTS },
+      OR: [{ notBefore: null }, { notBefore: { lte: T0 } }],
+    });
+  });
+});
+
 describe("isPermanentFailure", () => {
   it("counts only a 4xx the backend would repeat", () => {
     expect(isPermanentFailure(new SyncHttpError("x", 400))).toBe(true);
@@ -87,12 +96,15 @@ describe("drainOutbox", () => {
     expect(syncOutboxMock.findMany).not.toHaveBeenCalled();
   });
 
-  it("reads only rows that are not stuck", async () => {
+  it("reads only rows that are not stuck and not held back by a grace period", async () => {
     syncOutboxMock.findMany.mockResolvedValue([]);
 
     await drainOutbox(settings);
 
-    expect(syncOutboxMock.findMany).toHaveBeenCalledWith(expect.objectContaining({ where: { attempts: { lt: MAX_ATTEMPTS } } }));
+    const where = syncOutboxMock.findMany.mock.calls[0][0].where;
+    expect(where.attempts).toEqual({ lt: MAX_ATTEMPTS });
+    expect(where.OR[0]).toEqual({ notBefore: null });
+    expect(where.OR[1].notBefore.lte).toBeInstanceOf(Date);
   });
 
   it("publishes the batch and clears the sent rows on success", async () => {

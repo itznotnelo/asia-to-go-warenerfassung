@@ -112,6 +112,11 @@ model Product {
   // where this is false.
   dataComplete  Boolean     @default(false)
   notes         String?
+  // Soft delete (review should #34): "Löschen" only sets this. The row stays,
+  // so orders and scans keep their link and "Wiederherstellen" is lossless.
+  // The shop delete goes out after SHOP_DELETE_GRACE_MS, the hard delete only
+  // via "Endgültig löschen" - see lib/product-archive.ts.
+  archivedAt    DateTime?
   images        ProductImage[]
   scanLogs      ScanLog[]
   orderItems    ShopOrderItem[]
@@ -122,6 +127,7 @@ model Product {
   @@index([nameOriginal])
   @@index([isAvailable])
   @@index([dataComplete])
+  @@index([archivedAt])
 }
 
 // Single row (id always 1): the last ASIA-xxxxx number handed out. Bumped in
@@ -197,6 +203,9 @@ model SyncOutbox {
   payload    Json
   attempts   Int      @default(0)
   lastError  String?
+  // Not drained before this time. Set only for the delayed shop delete of an
+  // archived product (grace period, review should #34); null = send now.
+  notBefore  DateTime?
   createdAt  DateTime @default(now())
   updatedAt  DateTime @updatedAt
 

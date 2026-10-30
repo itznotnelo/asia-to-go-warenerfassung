@@ -8,14 +8,15 @@ import { buildCategoryCounts, computeOffHitRate, countIncomplete, WORK_QUEUE_LIM
 export const dynamic = "force-dynamic";
 
 export default async function DashboardPage() {
+  // Soft-deleted articles (review should #34) are not part of the progress.
   const [totalCount, completeCount, scanLogGroups, categoryGroups, categories, incompleteProducts] = await Promise.all([
-    prisma.product.count(),
-    prisma.product.count({ where: { dataComplete: true } }),
+    prisma.product.count({ where: { archivedAt: null } }),
+    prisma.product.count({ where: { archivedAt: null, dataComplete: true } }),
     prisma.scanLog.groupBy({ by: ["result"], _count: { result: true } }),
-    prisma.product.groupBy({ by: ["categoryId"], _count: { categoryId: true } }),
+    prisma.product.groupBy({ by: ["categoryId"], where: { archivedAt: null }, _count: { categoryId: true } }),
     getCategories(),
     prisma.product.findMany({
-      where: { dataComplete: false },
+      where: { archivedAt: null, dataComplete: false },
       orderBy: { updatedAt: "desc" },
       take: WORK_QUEUE_LIMIT,
     }),

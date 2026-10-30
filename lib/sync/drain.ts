@@ -23,6 +23,17 @@ export function unchangedSince(rows: OutboxRow[]) {
   return { OR: rows.map((r) => ({ id: r.id, updatedAt: r.updatedAt })) };
 }
 
+/**
+ * Rows the next batch may take: not stuck, and not held back by a grace
+ * period (the delayed shop delete of an archived product, review should #34).
+ */
+export function readyToSend(now: Date) {
+  return {
+    attempts: { lt: MAX_ATTEMPTS },
+    OR: [{ notBefore: null }, { notBefore: { lte: now } }],
+  };
+}
+
 /** Categories go first so a brand-new category referenced by a product in the same batch doesn't trip the backend's foreign-key check. */
 export function sortForPublish(rows: OutboxRow[]): OutboxRow[] {
   return [...rows].sort((a, b) => (a.entityType === b.entityType ? 0 : a.entityType === "category" ? -1 : 1));
@@ -70,7 +81,7 @@ export async function drainOutbox(settings: ShopSyncSettingsValue): Promise<Drai
   // Stuck rows stay out of the batch, otherwise one rejected op would fail
   // every publish and nothing else would reach the website.
   const rows = (await prisma.syncOutbox.findMany({
-    where: { attempts: { lt: MAX_ATTEMPTS } },
+    where: readyToSend(new Date()),
     orderBy: { createdAt: "asc" },
     take: BATCH_SIZE,
   })) as unknown as OutboxRow[];

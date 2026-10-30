@@ -60,6 +60,11 @@ describe("GET /api/export", () => {
     expect(JSON.parse(await json.text())).toEqual([ROW]);
   });
 
+  it("leaves soft-deleted (archived) articles out", async () => {
+    await get("?format=csv");
+    expect(findManyMock).toHaveBeenLastCalledWith(expect.objectContaining({ where: { archivedAt: null } }));
+  });
+
   it("falls back to json for an unknown format", async () => {
     const response = await get("?format=xlsx");
     expect(response.headers.get("Content-Type")).toBe("application/json; charset=utf-8");

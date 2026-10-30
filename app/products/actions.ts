@@ -5,8 +5,9 @@ import { Prisma } from "@/lib/generated/prisma/client";
 import { prisma } from "@/lib/prisma";
 import { toProductSummary, type ProductSummary } from "@/lib/product-summary";
 import { allergensConfirmedAtFor, computeDataComplete, isProductComplete, updateProductSchema } from "@/lib/product-schema";
-import { removeProductImageDir, storeUploadedImage } from "@/lib/images";
-import { enqueueProductDeleteSync, enqueueProductSync } from "@/lib/sync/outbox";
+import { storeUploadedImage } from "@/lib/images";
+import { enqueueProductSync } from "@/lib/sync/outbox";
+import { archiveProduct, purgeArchivedProduct, restoreArchivedProduct, type ArchiveResult } from "@/lib/product-archive";
 import { triggerBackgroundDrain } from "@/lib/sync/runner";
 import { applyBulkUpdate, type BulkUpdateResult } from "@/lib/bulk-update";
 import { CATEGORY_ERROR, isAssignableCategory } from "@/lib/category-guard";
@@ -144,15 +145,20 @@ export async function bulkUpdateProducts(rawInput: unknown): Promise<BulkUpdateR
   return applyBulkUpdate(rawInput);
 }
 
-export async function deleteProduct(id: string): Promise<{ ok: true } | { ok: false; message: string }> {
+/** "Löschen": nur archivieren (review should #34), die Website folgt nach der Karenzzeit - siehe lib/product-archive.ts. */
+export async function deleteProduct(id: string): Promise<ArchiveResult> {
   if (!id) return { ok: false, message: "Ungültige ID." };
-  // Vor dem lokalen Löschen anmelden - danach gibt es den Artikel nicht mehr,
-  // um Kategorie/Felder für einen Upsert nachzuschlagen, aber ein reiner
-  // delete-Op braucht nur die id (siehe lib/sync/outbox.ts).
-  await enqueueProductDeleteSync(id);
-  const deleted = await prisma.product.delete({ where: { id }, select: { sku: true } });
-  // Die SKU wird nie neu vergeben (SkuCounter), der Ordner ist also nur noch Ballast.
-  await removeProductImageDir(deleted.sku);
-  triggerBackgroundDrain();
-  return { ok: true };
+  return archiveProduct(id);
+}
+
+/** "Rückgängig" / "Wiederherstellen" eines gelöschten Artikels. */
+export async function restoreProduct(id: string): Promise<ArchiveResult> {
+  if (!id) return { ok: false, message: "Ungültige ID." };
+  return restoreArchivedProduct(id);
+}
+
+/** "Endgültig löschen": nur für gelöschte Artikel nach der Karenzzeit. */
+export async function purgeProduct(id: string): Promise<ArchiveResult> {
+  if (!id) return { ok: false, message: "Ungültige ID." };
+  return purgeArchivedProduct(id);
 }

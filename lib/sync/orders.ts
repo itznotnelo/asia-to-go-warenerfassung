@@ -1,64 +1,93 @@
 import "server-only";
 import { prisma } from "@/lib/prisma";
 import { ackOrder, fetchPendingOrders } from "./client";
-import { hasShopSyncSettings, type PendingOrder, type ShopSyncSettingsValue } from "./types";
+import { parsePendingOrders, type ValidPendingOrder } from "./order-schema";
+import { hasShopSyncSettings, type ShopSyncSettingsValue } from "./types";
 
-// `null` means "stock isn't tracked for this product" (the field is
-// optional in the Prisma schema) - an order against it never touches it.
-// Floors at 0 instead of going negative on an over-sold item.
-export function applyOrderToStock(currentQty: number | null, orderedQty: number): number | null {
-  if (currentQty === null) return null;
-  return Math.max(0, currentQty - orderedQty);
-}
-
-async function importOneOrder(settings: ShopSyncSettingsValue, order: PendingOrder): Promise<void> {
+async function importOneOrder(settings: ShopSyncSettingsValue, order: ValidPendingOrder): Promise<void> {
   const existing = await prisma.shopOrder.findUnique({ where: { id: order.id } });
   if (existing) {
     // Already imported in an earlier run - the backend retried the pending
-    // list before our previous ack landed. Ack again (idempotent) and stop,
-    // don't apply the stock decrement twice.
+    // list before our previous ack landed. Create and stock decrement were
+    // committed together, so just ack again (idempotent) and stop.
     await ackOrder(settings, order.id);
     return;
   }
 
-  await prisma.shopOrder.create({
-    data: {
-      id: order.id,
-      customerName: order.customerName,
-      customerPhone: order.customerPhone,
-      fulfilmentType: order.fulfilmentType,
-      totalRappen: order.totalRappen,
-      notes: order.notes,
-      items: {
-        create: order.items.map((item) => ({ productId: item.productId, nameDe: item.nameDe, qty: item.qty })),
+  await prisma.$transaction(async (tx) => {
+    // A product deleted locally after the customer ordered it would fail the
+    // ShopOrderItem FK (P2003) - store the line without the link instead,
+    // nameDe still says what was ordered.
+    const referencedIds = [...new Set(order.items.flatMap((item) => (item.productId ? [item.productId] : [])))];
+    const known = await tx.product.findMany({ where: { id: { in: referencedIds } }, select: { id: true } });
+    const knownIds = new Set(known.map((product) => product.id));
+    const items = order.items.map((item) => ({
+      productId: item.productId && knownIds.has(item.productId) ? item.productId : null,
+      nameDe: item.nameDe,
+      qty: item.qty,
+    }));
+
+    await tx.shopOrder.create({
+      data: {
+        id: order.id,
+        customerName: order.customerName,
+        customerPhone: order.customerPhone,
+        fulfilmentType: order.fulfilmentType,
+        totalRappen: order.totalRappen,
+        notes: order.notes,
+        // When the customer placed it, not when this app imported it.
+        createdAt: new Date(order.createdAt),
+        items: { create: items },
       },
-    },
+    });
+
+    // Atomic decrement, then floor at 0 for an over-sold item. `stockQty`
+    // null means "not tracked" and is never touched.
+    for (const item of items) {
+      if (!item.productId) continue;
+      await tx.product.updateMany({
+        where: { id: item.productId, stockQty: { not: null } },
+        data: { stockQty: { decrement: item.qty } },
+      });
+      await tx.product.updateMany({ where: { id: item.productId, stockQty: { lt: 0 } }, data: { stockQty: 0 } });
+    }
   });
 
-  for (const item of order.items) {
-    if (!item.productId) continue;
-    const product = await prisma.product.findUnique({ where: { id: item.productId } });
-    if (!product) continue;
-    await prisma.product.update({
-      where: { id: product.id },
-      data: { stockQty: applyOrderToStock(product.stockQty, item.qty) },
-    });
-  }
-
+  // Only after commit: if anything above threw, the backend keeps the order
+  // pending and the next pass retries it from scratch.
   await ackOrder(settings, order.id);
 }
 
-/** Pulls every pending (paid) order from the backend, one at a time so a failure on order N doesn't lose orders 1..N-1 already imported. */
-export async function importPendingOrders(settings: ShopSyncSettingsValue): Promise<{ imported: number; skippedNoSettings: boolean }> {
+export interface ImportOrdersResult {
+  imported: number;
+  failed: number;
+  /** Ids (or null when the backend sent no usable id) of orders that were not imported this pass. */
+  failedOrderIds: (string | null)[];
+  skippedNoSettings: boolean;
+}
+
+/** Pulls every pending (paid) order from the backend. Each order succeeds or fails on its own, so one bad order never blocks the ones behind it. */
+export async function importPendingOrders(settings: ShopSyncSettingsValue): Promise<ImportOrdersResult> {
   if (!hasShopSyncSettings(settings)) {
-    return { imported: 0, skippedNoSettings: true };
+    return { imported: 0, failed: 0, failedOrderIds: [], skippedNoSettings: true };
   }
 
-  const pending = await fetchPendingOrders(settings);
-  let imported = 0;
-  for (const order of pending) {
-    await importOneOrder(settings, order);
-    imported += 1;
+  const { valid, invalid } = parsePendingOrders(await fetchPendingOrders(settings));
+  const failedOrderIds: (string | null)[] = [];
+  for (const bad of invalid) {
+    console.error("[sync] pending order rejected by schema:", bad.id ?? "(no id)", bad.error);
+    failedOrderIds.push(bad.id);
   }
-  return { imported, skippedNoSettings: false };
+
+  let imported = 0;
+  for (const order of valid) {
+    try {
+      await importOneOrder(settings, order);
+      imported += 1;
+    } catch (error) {
+      console.error("[sync] order import failed:", order.id, error);
+      failedOrderIds.push(order.id);
+    }
+  }
+  return { imported, failed: failedOrderIds.length, failedOrderIds, skippedNoSettings: false };
 }

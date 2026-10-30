@@ -61,6 +61,21 @@ export function embeddedPostgresSecurityOptions(): {
   };
 }
 
+/**
+ * Run an initdb with umask 077. embedded-postgres' initialise() writes the
+ * --pwfile to os.tmpdir() with the default mode (0644 under umask 022). No-op
+ * on Windows, where %TEMP% is per-user and the mode is ignored.
+ */
+export async function withPrivateUmask<T>(fn: () => Promise<T>): Promise<T> {
+  if (process.platform === "win32") return fn();
+  const previous = process.umask(0o077);
+  try {
+    return await fn();
+  } finally {
+    process.umask(previous);
+  }
+}
+
 export function generateDbCredential(): string {
   return crypto.randomBytes(32).toString("base64url");
 }

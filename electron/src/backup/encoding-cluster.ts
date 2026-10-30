@@ -3,6 +3,7 @@ import { execFile } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
 import { Client } from "pg";
+import { withPrivateUmask } from "../db-credential";
 import { ClusterOps, EncodingChecks, Login } from "./encoding-migration";
 import { BackupError, Logger, PgConnection } from "./types";
 
@@ -70,7 +71,8 @@ export function embeddedClusterOps(o: EmbeddedClusterOptions): ClusterOps {
     },
     async initUtf8(dataDir, login) {
       if (fs.existsSync(dataDir)) throw new Error(`${dataDir} already exists`);
-      await instance(dataDir, login).initialise();
+      // initdb --pwfile in os.tmpdir() carries the login: 0600 (#3113).
+      await withPrivateUmask(() => instance(dataDir, login).initialise());
     },
     async start(dataDir) {
       const port = await o.findFreePort();

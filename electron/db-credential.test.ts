@@ -17,6 +17,7 @@ import {
   prepareFreshDbCredential,
   readStoredCredential,
   resolveExistingDbCredential,
+  withPrivateUmask,
   writeStoredCredential,
   type DbCredentialDeps,
   type ExistingClusterDeps,
@@ -114,6 +115,18 @@ describe("embeddedPostgresSecurityOptions", () => {
       authMethod: "scram-sha-256",
       postgresFlags: ["-c", "listen_addresses=127.0.0.1"],
     });
+  });
+});
+
+describe.skipIf(process.platform === "win32")("withPrivateUmask", () => {
+  it("creates files 0600 inside, restores the umask after, also on a throw", async () => {
+    const before = process.umask();
+    const file = path.join(dir, "pg-password-x");
+    await withPrivateUmask(async () => fs.writeFileSync(file, "v\n"));
+    expect(fs.statSync(file).mode & 0o777).toBe(0o600);
+    expect(process.umask()).toBe(before);
+    await expect(withPrivateUmask(async () => Promise.reject(new Error("initdb failed")))).rejects.toThrow("initdb failed");
+    expect(process.umask()).toBe(before);
   });
 });
 

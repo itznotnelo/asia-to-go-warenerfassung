@@ -23,6 +23,7 @@ import {
 } from "./restore-screens";
 import { migrateClusterToUtf8, recoverEncodingMigration } from "./backup/encoding-migration";
 import { embeddedClusterOps, embeddedPgCtlPath, pgEncodingChecks } from "./backup/encoding-cluster";
+import { embeddedPostgresSecurityOptions } from "./db-credential";
 import {
   blockedDialog,
   encodingFailedDialog,
@@ -406,11 +407,21 @@ async function bootFullPipeline(): Promise<void> {
     const { serverEncoding } = await backup.readServerInfo(backupDeps.conn);
     if (serverEncoding !== "UTF8") {
       log.info(`[encoding] cluster is ${serverEncoding}, migrating to UTF8`);
+      // The backup inside already runs on the per-install credential (#3113,
+      // resolved in startEmbeddedPostgres). The new cluster gets the same value,
+      // scram-sha-256 and a loopback-only listener, so db-credential.bin stays
+      // valid after the dir swap.
       const enc = await migrateClusterToUtf8({
         ...backupDeps,
         userDataDir,
-        cluster: embeddedClusterOps({ pgCtlPath: embeddedPgCtlPath(__dirname), findFreePort, log }),
+        cluster: embeddedClusterOps({
+          pgCtlPath: embeddedPgCtlPath(__dirname),
+          findFreePort,
+          log,
+          ...embeddedPostgresSecurityOptions(),
+        }),
         checks: pgEncodingChecks,
+        newLogin: runningPostgres.login,
       });
       // pg_ctl already stopped the old postmaster; stop() would taskkill a dead pid.
       if (enc.status === "migrated" || (enc.status === "failed" && enc.oldClusterStopped)) runningPostgres = null;

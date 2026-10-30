@@ -9,7 +9,8 @@ import { parseChfToRappen, PRICE_ERROR } from "@/lib/pricing";
 import type { CategoryOption } from "@/lib/category-option";
 import type { DataSource } from "@/lib/generated/prisma/client";
 import type { ProductInput as SaveProductInput } from "@/lib/product-schema";
-import { buildQuickCaptureInput, suggestVatRate, vatAfterCategoryChange } from "./product-form-helpers";
+import { buildQuickCaptureInput, CAPTURE_FORM_ID, isQuickCaptureDirty, suggestVatRate, vatAfterCategoryChange } from "./product-form-helpers";
+import { useReportDirty } from "./use-report-dirty";
 
 interface QuickCaptureFormProps {
   ean: string | null;
@@ -20,6 +21,7 @@ interface QuickCaptureFormProps {
   onCancel: () => void;
   saving: boolean;
   saveError: string[] | null;
+  onDirtyChange?: (dirty: boolean) => void;
 }
 
 /**
@@ -27,7 +29,17 @@ interface QuickCaptureFormProps {
  * Scan. Der Artikel landet unvollständig im Arbeitsvorrat (/dashboard) —
  * Details kommen später am Schreibtisch über /products/[id].
  */
-export function QuickCaptureForm({ ean, categories, initialNameDe, dataSource, onSave, onCancel, saving, saveError }: QuickCaptureFormProps) {
+export function QuickCaptureForm({
+  ean,
+  categories,
+  initialNameDe,
+  dataSource,
+  onSave,
+  onCancel,
+  saving,
+  saveError,
+  onDirtyChange,
+}: QuickCaptureFormProps) {
   const [nameDe, setNameDe] = useState(initialNameDe ?? "");
   const [categoryId, setCategoryId] = useState("");
   const [priceChf, setPriceChf] = useState("");
@@ -35,6 +47,7 @@ export function QuickCaptureForm({ ean, categories, initialNameDe, dataSource, o
   const [vatRate, setVatRate] = useState(() => suggestVatRate(undefined));
   const [vatTouched, setVatTouched] = useState(false);
   const formId = useId();
+  useReportDirty(isQuickCaptureDirty({ nameDe, categoryId, priceChf, vatTouched }, initialNameDe ?? ""), onDirtyChange);
 
   function handleCategoryChange(nextId: string) {
     setCategoryId(nextId);
@@ -67,6 +80,7 @@ export function QuickCaptureForm({ ean, categories, initialNameDe, dataSource, o
 
   return (
     <form
+      id={CAPTURE_FORM_ID}
       onSubmit={handleSubmit}
       onKeyDown={handleKeyDown}
       className="flex flex-col gap-4 rounded-xl border border-dashed border-primary/50 bg-card p-6"

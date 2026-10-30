@@ -69,3 +69,48 @@ describe("QuickCaptureForm MwSt", () => {
     expect(onSave.mock.calls[0][0]).toMatchObject({ categoryId: "c-reis", vatRate: 8.1, priceRappen: 450 });
   });
 });
+
+describe("QuickCaptureForm unsaved input (#29)", () => {
+  function renderWithDirty(onCancel = vi.fn()) {
+    const onDirtyChange = vi.fn();
+    const view = render(
+      <QuickCaptureForm
+        ean="4006381333931"
+        categories={categories}
+        initialNameDe="Reisnudeln"
+        dataSource="openfoodfacts"
+        onSave={() => {}}
+        onCancel={onCancel}
+        saving={false}
+        saveError={null}
+        onDirtyChange={onDirtyChange}
+      />,
+    );
+    return { onDirtyChange, onCancel, view };
+  }
+
+  it("starts clean with a prefilled name, turns dirty on input and clean again when it is undone", () => {
+    const { onDirtyChange } = renderWithDirty();
+    expect(onDirtyChange).toHaveBeenLastCalledWith(false);
+    fireEvent.change(screen.getByLabelText("Preis (CHF)"), { target: { value: "3.50" } });
+    expect(onDirtyChange).toHaveBeenLastCalledWith(true);
+    fireEvent.change(screen.getByLabelText("Preis (CHF)"), { target: { value: "" } });
+    expect(onDirtyChange).toHaveBeenLastCalledWith(false);
+  });
+
+  it("reports clean when the form goes away, so the next scan is not blocked", () => {
+    const { onDirtyChange, view } = renderWithDirty();
+    fireEvent.change(screen.getByLabelText("Name (Deutsch)"), { target: { value: "Glasnudeln" } });
+    expect(onDirtyChange).toHaveBeenLastCalledWith(true);
+    view.unmount();
+    expect(onDirtyChange).toHaveBeenLastCalledWith(false);
+  });
+
+  it("leaves the Esc decision to the scan screen (onCancel), it never clears itself", () => {
+    const { onCancel } = renderWithDirty();
+    fireEvent.change(screen.getByLabelText("Name (Deutsch)"), { target: { value: "Glasnudeln" } });
+    fireEvent.keyDown(screen.getByLabelText("Name (Deutsch)"), { key: "Escape" });
+    expect(onCancel).toHaveBeenCalledOnce();
+    expect((screen.getByLabelText("Name (Deutsch)") as HTMLInputElement).value).toBe("Glasnudeln");
+  });
+});

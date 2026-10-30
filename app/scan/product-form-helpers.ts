@@ -198,6 +198,21 @@ export function buildQuickCaptureInput(params: {
  * Allergene haben, also muss sie jemand neu bestätigen.
  * Nutrition is not copied either: it belongs to the scanned article.
  */
+/** Both capture forms use this id, only one is open at a time; the discard dialog's Speichern submits it. */
+export const CAPTURE_FORM_ID = "scan-capture-form";
+
+/** Review should #29: anything typed or picked that the form did not start with. */
+export function isFormDirty(current: FormValues, initial: FormValues): boolean {
+  return JSON.stringify(current) !== JSON.stringify(initial);
+}
+
+export function isQuickCaptureDirty(
+  current: { nameDe: string; categoryId: string; priceChf: string; vatTouched: boolean },
+  initialNameDe: string,
+): boolean {
+  return current.nameDe !== initialNameDe || current.categoryId !== "" || current.priceChf !== "" || current.vatTouched;
+}
+
 export function duplicatedFieldsFromLastSaved(lastSaved: SaveProductInput): Partial<FormValues> {
   return {
     nameDe: lastSaved.nameDe,

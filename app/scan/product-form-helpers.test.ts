@@ -2,6 +2,9 @@ import { describe, expect, it } from "vitest";
 import {
   buildQuickCaptureInput,
   duplicatedFieldsFromLastSaved,
+  EMPTY_VALUES,
+  isFormDirty,
+  isQuickCaptureDirty,
   mappedOffToFormValues,
   parseFormNumbers,
   productSummaryToFormValues,
@@ -259,6 +262,25 @@ describe("buildQuickCaptureInput", () => {
       dataSource: "manual",
     });
     expect(input.vatRate).toBe(8.1);
+  });
+});
+
+describe("unsaved input (#29)", () => {
+  it("a full form is dirty once any field differs from what it opened with", () => {
+    const start = { ...EMPTY_VALUES, nameDe: "Reisnudeln" };
+    expect(isFormDirty({ ...start }, start)).toBe(false);
+    expect(isFormDirty({ ...start, priceChf: "3.50" }, start)).toBe(true);
+    expect(isFormDirty({ ...start, allergens: ["gluten"] }, start)).toBe(true);
+    expect(isFormDirty({ ...start, allergensConfirmed: true }, start)).toBe(true);
+  });
+
+  it("quick capture: an OFF name alone is not input, anything else is", () => {
+    const clean = { nameDe: "Reisnudeln", categoryId: "", priceChf: "", vatTouched: false };
+    expect(isQuickCaptureDirty(clean, "Reisnudeln")).toBe(false);
+    expect(isQuickCaptureDirty({ ...clean, nameDe: "Glasnudeln" }, "Reisnudeln")).toBe(true);
+    expect(isQuickCaptureDirty({ ...clean, categoryId: "c1" }, "Reisnudeln")).toBe(true);
+    expect(isQuickCaptureDirty({ ...clean, priceChf: "2" }, "Reisnudeln")).toBe(true);
+    expect(isQuickCaptureDirty({ ...clean, vatTouched: true }, "Reisnudeln")).toBe(true);
   });
 });
 

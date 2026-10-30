@@ -8,12 +8,15 @@ import type { DataSource } from "@/lib/generated/prisma/client";
 import type { CategoryOption } from "@/lib/category-option";
 import type { ProductInput as SaveProductInput } from "@/lib/product-schema";
 import {
+  CAPTURE_FORM_ID,
   duplicatedFieldsFromLastSaved,
   EMPTY_VALUES,
+  isFormDirty,
   parseFormNumbers,
   type FormValues,
   type NumberFieldErrors,
 } from "./product-form-helpers";
+import { useReportDirty } from "./use-report-dirty";
 
 export type { FormValues } from "./product-form-helpers";
 export { mappedOffToFormValues, suggestVatRate } from "./product-form-helpers";
@@ -30,12 +33,27 @@ interface ProductFormProps {
   onCancel: () => void;
   saving: boolean;
   saveError: string[] | null;
+  onDirtyChange?: (dirty: boolean) => void;
 }
 
-export function ProductForm({ ean, categories, initial, sourced, lastSaved, dataSource, onSave, onCancel, saving, saveError }: ProductFormProps) {
-  const [values, setValues] = useState<FormValues>({ ...EMPTY_VALUES, ...initial });
+export function ProductForm({
+  ean,
+  categories,
+  initial,
+  sourced,
+  lastSaved,
+  dataSource,
+  onSave,
+  onCancel,
+  saving,
+  saveError,
+  onDirtyChange,
+}: ProductFormProps) {
+  const [startValues] = useState<FormValues>(() => ({ ...EMPTY_VALUES, ...initial }));
+  const [values, setValues] = useState<FormValues>(startValues);
   const [errors, setErrors] = useState<NumberFieldErrors>({});
   const formId = useId();
+  useReportDirty(isFormDirty(values, startValues), onDirtyChange);
 
   function update<K extends keyof FormValues>(key: K, value: FormValues[K]) {
     setValues((prev) => ({ ...prev, [key]: value }));
@@ -89,7 +107,7 @@ export function ProductForm({ ean, categories, initial, sourced, lastSaved, data
   }
 
   return (
-    <form onSubmit={handleSubmit} onKeyDown={handleKeyDown} className="flex flex-col gap-5 rounded-xl border border-border bg-card p-6">
+    <form id={CAPTURE_FORM_ID} onSubmit={handleSubmit} onKeyDown={handleKeyDown} className="flex flex-col gap-5 rounded-xl border border-border bg-card p-6">
       {ean && <p className="font-numeric text-sm text-muted-foreground">{ean}</p>}
 
       <ProductFieldset formId={formId} values={values} onChange={update} categories={categories} sourced={sourced} errors={errors} />

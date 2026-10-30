@@ -8,6 +8,8 @@ import { computeDataComplete, isProductComplete, productInputSchema } from "@/li
 import { storeUploadedImage } from "@/lib/images";
 import { enqueueProductDeleteSync, enqueueProductSync } from "@/lib/sync/outbox";
 import { triggerBackgroundDrain } from "@/lib/sync/runner";
+import { applyBulkUpdate, type BulkUpdateResult } from "@/lib/bulk-update";
+import { CATEGORY_ERROR, isAssignableCategory } from "@/lib/category-guard";
 
 const updateProductSchema = productInputSchema.extend({ id: z.string().min(1) });
 
@@ -22,6 +24,9 @@ export async function updateProduct(rawInput: unknown): Promise<UpdateProductRes
     return { ok: false, message: "Bitte Eingaben prüfen.", fieldErrors: parsed.error.flatten().fieldErrors };
   }
   const { id, ...input } = parsed.data;
+  if (!(await isAssignableCategory(input.categoryId))) {
+    return { ok: false, message: CATEGORY_ERROR, fieldErrors: { categoryId: [CATEGORY_ERROR] } };
+  }
 
   const existing = await prisma.product.findUnique({ where: { id }, include: { images: true } });
   if (!existing) {
@@ -132,39 +137,9 @@ export async function uploadProductImage(formData: FormData): Promise<UploadImag
   return { ok: true, path: stored.path, dataComplete };
 }
 
-const bulkUpdateSchema = z.object({
-  ids: z.array(z.string().min(1)).min(1),
-  categoryId: z.string().min(1).optional(),
-  vatRate: z.number().optional(),
-  isAvailable: z.boolean().optional(),
-});
-
 /** Bulk-Aktionen aus der Artikelliste: Kategorie setzen, MwSt setzen, Verfügbarkeit umschalten. */
-export async function bulkUpdateProducts(
-  rawInput: unknown,
-): Promise<{ ok: true; count: number } | { ok: false; message: string }> {
-  const parsed = bulkUpdateSchema.safeParse(rawInput);
-  if (!parsed.success) {
-    return { ok: false, message: "Bitte Eingaben prüfen." };
-  }
-  const { ids, ...patch } = parsed.data;
-  if (Object.keys(patch).length === 0) {
-    return { ok: false, message: "Keine Änderung ausgewählt." };
-  }
-
-  const result = await prisma.product.updateMany({ where: { id: { in: ids } }, data: patch });
-
-  // isAvailable ist Teil der Shop-Regel (siehe lib/sync/build-ops.ts) - eine
-  // Bulk-Verfügbarkeitsänderung muss dieselbe Veröffentlichung auslösen wie
-  // das einzelne Checkbox-Toggle in quickUpdateProduct().
-  if ("isAvailable" in patch) {
-    for (const id of ids) {
-      await enqueueProductSync(id);
-    }
-    triggerBackgroundDrain();
-  }
-
-  return { ok: true, count: result.count };
+export async function bulkUpdateProducts(rawInput: unknown): Promise<BulkUpdateResult> {
+  return applyBulkUpdate(rawInput);
 }
 
 export async function deleteProduct(id: string): Promise<{ ok: true } | { ok: false; message: string }> {

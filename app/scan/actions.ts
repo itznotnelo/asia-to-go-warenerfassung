@@ -10,6 +10,7 @@ import { computeDataComplete, productInputSchema } from "@/lib/product-schema";
 import { attachOffImages, type OffImageUrls } from "@/lib/off-images";
 import { enqueueProductSync } from "@/lib/sync/outbox";
 import { triggerBackgroundDrain } from "@/lib/sync/runner";
+import { CATEGORY_ERROR, isAssignableCategory } from "@/lib/category-guard";
 import type { CategoryOption } from "@/lib/category-option";
 import type { LookupResult } from "@/lib/lookup-result";
 
@@ -82,6 +83,9 @@ export async function saveProduct(rawInput: unknown, offImageUrls?: OffImageUrls
     return { ok: false, message: "Bitte Eingaben prüfen.", fieldErrors: parsed.error.flatten().fieldErrors };
   }
   const input = parsed.data;
+  if (!(await isAssignableCategory(input.categoryId))) {
+    return { ok: false, message: CATEGORY_ERROR, fieldErrors: { categoryId: [CATEGORY_ERROR] } };
+  }
 
   const sku = await generateNextSku();
   const dataComplete = computeDataComplete(input, false);

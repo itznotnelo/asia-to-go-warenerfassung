@@ -1,4 +1,8 @@
 import { z } from "zod";
+import { VAT_RATES } from "@/lib/pricing";
+
+// Server actions are plain POST endpoints, so the UI <select> is not enough to keep 7.7 or 0 out.
+export const vatRateSchema = z.number().refine((rate) => VAT_RATES.includes(rate), "MwSt muss 2.6 % oder 8.1 % sein");
 
 export const productInputSchema = z.object({
   ean: z.string().trim().nullable(),
@@ -8,7 +12,7 @@ export const productInputSchema = z.object({
   originCountry: z.string().trim().length(2).optional(),
   categoryId: z.string().min(1, "Kategorie ist Pflicht"),
   priceRappen: z.number().int().positive("Preis muss positiv sein"),
-  vatRate: z.number(),
+  vatRate: vatRateSchema,
   unitType: z.enum(["piece", "weight", "volume"]),
   contentAmount: z.number().positive().optional(),
   contentUnit: z.enum(["g", "kg", "ml", "l", "stk"]).optional(),

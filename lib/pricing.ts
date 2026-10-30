@@ -31,6 +31,9 @@ export function calcUnitPrice(
   }
 }
 
+/** Die einzigen zulässigen MwSt-Sätze (reduziert / Normalsatz), siehe swiss-food-compliance. */
+export const VAT_RATES: readonly number[] = [2.6, 8.1];
+
 /** Steueranteil, aus einem MwSt-inklusive Bruttopreis herausgerechnet. */
 export function vatRappen(grossRappen: number, rate: number): number {
   return Math.round(grossRappen - grossRappen / (1 + rate / 100));

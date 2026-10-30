@@ -11,6 +11,16 @@ export interface OutboxRow {
   entityType: string;
   payload: PublishOp;
   attempts: number;
+  updatedAt: Date;
+}
+
+/**
+ * Matches only rows still holding the payload this pass read. A save during
+ * the publish upserts the same row (same id, new updatedAt), so the newer
+ * payload survives for the next pass instead of being deleted unsent.
+ */
+export function unchangedSince(rows: OutboxRow[]) {
+  return { OR: rows.map((r) => ({ id: r.id, updatedAt: r.updatedAt })) };
 }
 
 /**
@@ -56,7 +66,7 @@ export async function drainOutbox(settings: ShopSyncSettingsValue): Promise<Drai
   const { toSend, toDrop } = partitionForDrain(rows);
 
   if (toDrop.length > 0) {
-    await prisma.syncOutbox.deleteMany({ where: { id: { in: toDrop.map((r) => r.id) } } });
+    await prisma.syncOutbox.deleteMany({ where: unchangedSince(toDrop) });
   }
   if (toSend.length === 0) {
     return { sent: 0, dropped: toDrop.length, failed: 0, skippedNoSettings: false };
@@ -64,18 +74,16 @@ export async function drainOutbox(settings: ShopSyncSettingsValue): Promise<Drai
 
   try {
     await publishOps(settings, toSend.map((r) => r.payload));
-    await prisma.syncOutbox.deleteMany({ where: { id: { in: toSend.map((r) => r.id) } } });
+    await prisma.syncOutbox.deleteMany({ where: unchangedSince(toSend) });
     return { sent: toSend.length, dropped: toDrop.length, failed: 0, skippedNoSettings: false };
   } catch (error) {
     const message = String(error).slice(0, 500);
-    await Promise.all(
-      toSend.map((row) =>
-        prisma.syncOutbox.update({
-          where: { id: row.id },
-          data: { attempts: { increment: 1 }, lastError: message },
-        }),
-      ),
-    );
+    // Same guard as the delete: a payload saved during the failed publish
+    // starts fresh (attempts 0) and must not inherit this failure.
+    await prisma.syncOutbox.updateMany({
+      where: unchangedSince(toSend),
+      data: { attempts: { increment: 1 }, lastError: message },
+    });
     return { sent: 0, dropped: toDrop.length, failed: toSend.length, skippedNoSettings: false };
   }
 }

@@ -1,6 +1,12 @@
 import "server-only";
 import type { PendingOrder, PublishOp, ShopSyncSettingsValue } from "./types";
 
+// A hung backend call would otherwise hold the single-flight sync pass
+// (runner.ts) forever and stall every later sync. Uploads get more time
+// because a phone photo over a slow shop line can legitimately take a while.
+export const SYNC_FETCH_TIMEOUT_MS = 15_000;
+export const IMAGE_UPLOAD_TIMEOUT_MS = 60_000;
+
 function authHeaders(settings: ShopSyncSettingsValue): Record<string, string> {
   return {
     "x-device-id": settings.deviceId,
@@ -18,6 +24,7 @@ export async function publishOps(settings: ShopSyncSettingsValue, ops: PublishOp
     method: "POST",
     headers: { ...authHeaders(settings), "content-type": "application/json" },
     body: JSON.stringify({ ops }),
+    signal: AbortSignal.timeout(SYNC_FETCH_TIMEOUT_MS),
   });
   if (!response.ok) {
     throw new Error(`publish failed: HTTP ${response.status}`);
@@ -41,6 +48,7 @@ export async function uploadImageToBackend(
     method: "POST",
     headers: { ...authHeaders(settings), "content-type": contentType, "x-product-id": productId, "x-image-type": type },
     body: new Blob([arrayBuffer], { type: contentType }),
+    signal: AbortSignal.timeout(IMAGE_UPLOAD_TIMEOUT_MS),
   });
   if (!response.ok) {
     throw new Error(`image upload failed: HTTP ${response.status}`);
@@ -51,7 +59,10 @@ export async function uploadImageToBackend(
 
 /** Only ever returns *paid* orders (filtered server-side) - see atg-shop-backend's handlePendingOrders. */
 export async function fetchPendingOrders(settings: ShopSyncSettingsValue): Promise<PendingOrder[]> {
-  const response = await fetch(apiUrl(settings, "/orders/pending"), { headers: authHeaders(settings) });
+  const response = await fetch(apiUrl(settings, "/orders/pending"), {
+    headers: authHeaders(settings),
+    signal: AbortSignal.timeout(SYNC_FETCH_TIMEOUT_MS),
+  });
   if (!response.ok) {
     throw new Error(`fetch pending orders failed: HTTP ${response.status}`);
   }
@@ -64,6 +75,7 @@ export async function ackOrder(settings: ShopSyncSettingsValue, orderId: string)
   const response = await fetch(apiUrl(settings, `/orders/${orderId}/ack`), {
     method: "POST",
     headers: authHeaders(settings),
+    signal: AbortSignal.timeout(SYNC_FETCH_TIMEOUT_MS),
   });
   if (!response.ok) {
     throw new Error(`ack order failed: HTTP ${response.status}`);

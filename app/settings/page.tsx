@@ -16,6 +16,13 @@ export default async function SettingsPage() {
     <div className="mx-auto flex w-full max-w-xl flex-col gap-6 px-4 py-10">
       <h1 className="text-xl font-semibold">Einstellungen</h1>
       <BackupSection />
+      {/* Readable list for Excel (files #3066); not a backup, so outside the Datensicherung block. */}
+      <a
+        href="/api/export?format=excel"
+        className="self-start rounded-md border border-border px-3 py-1.5 text-sm hover:bg-muted"
+      >
+        Für Excel exportieren
+      </a>
       {/* Not a backup, so kept apart from Datensicherung and closed by default (files' UX 1.1). */}
       <details className="text-sm">
         <summary className="cursor-pointer text-muted-foreground">Weitere Exporte</summary>

@@ -20,6 +20,8 @@ const base: ProductExportRow = {
   storageType: "ambient",
   ingredientsDe: "",
   allergens: "fish;gluten",
+  traces: "",
+  allergensConfirmedAt: "",
   isAvailable: true,
   stockQty: "",
   dataSource: "manual",

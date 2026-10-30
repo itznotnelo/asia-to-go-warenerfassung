@@ -88,8 +88,10 @@ describe("suggestVatRate", () => {
   });
 
   it("keys on the slug, so renaming a category does not change the rate", () => {
-    expect(suggestVatRate({ ...alkohol, name: "Bier & Wein" })).toBe(8.1);
-    expect(suggestVatRate({ ...reis, name: "Alkohol", parentName: "Non-Food" })).toBe(2.6);
+    const renamedAlkohol: CategoryOption = { ...alkohol, name: "Bier & Wein" };
+    const reisNamedAlkohol: CategoryOption = { ...reis, name: "Alkohol", parentName: "Non-Food" };
+    expect(suggestVatRate(renamedAlkohol)).toBe(8.1);
+    expect(suggestVatRate(reisNamedAlkohol)).toBe(2.6);
   });
 
   it("lets a sub-category the tree does not know inherit from its parent", () => {

@@ -52,7 +52,7 @@ describe("publishOps", () => {
 
 describe("fetch timeouts (must 6)", () => {
   it("gives every backend call an abort signal so a hung request can't stall the sync pass", async () => {
-    const fetchSpy = vi.fn().mockResolvedValue(jsonResponse({ items: [], r2Key: "k" }));
+    const fetchSpy = vi.fn().mockResolvedValue(jsonResponse({ items: [], r2Key: "products/prod_1/front-1.jpg" }));
     vi.stubGlobal("fetch", fetchSpy);
 
     await publishOps(settings, []);
@@ -69,7 +69,7 @@ describe("fetch timeouts (must 6)", () => {
   it("uses 15 s for API calls and the longer budget only for photo uploads", async () => {
     // AbortSignal.timeout runs on Node-internal timers that fake timers can't drive, so check the budgets.
     const timeoutSpy = vi.spyOn(AbortSignal, "timeout");
-    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(jsonResponse({ items: [], r2Key: "k" })));
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(jsonResponse({ items: [], r2Key: "products/prod_1/front-1.jpg" })));
     try {
       await publishOps(settings, []);
       await uploadImageToBackend(settings, "prod_1", "front", Buffer.from("x"), "image/jpeg");

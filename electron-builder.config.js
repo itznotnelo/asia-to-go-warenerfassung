@@ -52,6 +52,22 @@ module.exports = {
       fs.cpSync(engineSrc, engineDest, { recursive: true });
       console.log(`Copied prisma-engines -> ${engineDest}`);
     }
+
+    // pg_dump.exe / pg_restore.exe 18.x + the DLLs they import, from the EDB
+    // Windows binaries zip (embedded-postgres ships no client tools, #3068).
+    // Populated by the release workflow. Without them every backup fails and
+    // the pre-migrate hook blocks every schema update, so a CI build must not
+    // ship without them.
+    const pgToolsSrc = path.join(__dirname, "electron", "resources", "pg-tools");
+    if (fs.existsSync(path.join(pgToolsSrc, "pg_dump.exe"))) {
+      const pgToolsDest = path.join(context.appOutDir, "resources", "pg-tools");
+      fs.cpSync(pgToolsSrc, pgToolsDest, { recursive: true });
+      console.log(`Copied pg-tools -> ${pgToolsDest}`);
+    } else if (process.env.CI) {
+      throw new Error(`pg-tools missing at ${pgToolsSrc}: backups (and migrations) would not work`);
+    } else {
+      console.warn(`WARNING: no pg-tools at ${pgToolsSrc}; this local build cannot make backups`);
+    }
   },
   win: {
     target: "nsis",

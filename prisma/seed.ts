@@ -1,6 +1,7 @@
 import "dotenv/config";
 import { PrismaPg } from "@prisma/adapter-pg";
 import { PrismaClient } from "../lib/generated/prisma/client";
+import { isValidBarcode, normalizeGtin } from "../lib/barcode";
 
 const adapter = new PrismaPg({ connectionString: process.env.DATABASE_URL });
 const prisma = new PrismaClient({ adapter });
@@ -138,7 +139,7 @@ const products: ProductSeed[] = [
     allergens: ["fish", "gluten"],
   },
   {
-    ean: "8850329654127",
+    ean: "8850329654123",
     sku: "REI-001",
     nameDe: "Jasminreis",
     nameOriginal: "ข้าวหอมมะลิ",
@@ -154,7 +155,7 @@ const products: ProductSeed[] = [
     allergens: [],
   },
   {
-    ean: "8801043017135",
+    ean: "8801043017138",
     sku: "NUD-001",
     nameDe: "Shin Ramyun Instantnudeln, scharf, 5er-Pack",
     nameOriginal: "신라면",
@@ -186,7 +187,7 @@ const products: ProductSeed[] = [
     allergens: ["gluten", "soybeans"],
   },
   {
-    ean: "8801007500128",
+    ean: "8801007500126",
     sku: "FRI-001",
     nameDe: "Kimchi, fermentiert",
     nameOriginal: "김치",
@@ -218,7 +219,7 @@ const products: ProductSeed[] = [
     allergens: ["soybeans"],
   },
   {
-    ean: "4710114128254",
+    ean: "4710114128250",
     sku: "BIE-001",
     nameDe: "Tsingtao Bier, 6er-Pack",
     nameOriginal: "青岛啤酒",
@@ -235,7 +236,7 @@ const products: ProductSeed[] = [
     allergens: ["gluten"],
   },
   {
-    ean: "6970399820133",
+    ean: "6970399820135",
     sku: "NON-001",
     nameDe: "Bambusdampfkorb, 25 cm",
     brand: "Joyce Chen",
@@ -248,17 +249,28 @@ const products: ProductSeed[] = [
   },
 ];
 
+// Runs before any write, so a typo'd seed EAN fails the whole seed instead of
+// landing half-way in the database.
+function assertValidSeedEans(seeds: ProductSeed[]) {
+  const invalid = seeds.filter((product) => !isValidBarcode(normalizeGtin(product.ean)));
+  if (invalid.length > 0) {
+    const list = invalid.map((product) => `${product.sku}=${product.ean}`).join(", ");
+    throw new Error(`Ungültige EAN (Format oder Prüfziffer) in Produkt-Seed: ${list}`);
+  }
+}
+
 async function seedProducts(idBySlug: Map<string, string>) {
   for (const product of products) {
     const categoryId = idBySlug.get(product.categorySlug);
     if (!categoryId) {
       throw new Error(`Unbekannter Kategorie-Slug in Produkt-Seed: ${product.categorySlug}`);
     }
+    const ean = normalizeGtin(product.ean);
 
     await prisma.product.upsert({
       where: { sku: product.sku },
       update: {
-        ean: product.ean,
+        ean,
         nameDe: product.nameDe,
         nameOriginal: product.nameOriginal,
         brand: product.brand,
@@ -275,7 +287,7 @@ async function seedProducts(idBySlug: Map<string, string>) {
         dataSource: "manual",
       },
       create: {
-        ean: product.ean,
+        ean,
         sku: product.sku,
         nameDe: product.nameDe,
         nameOriginal: product.nameOriginal,
@@ -297,6 +309,7 @@ async function seedProducts(idBySlug: Map<string, string>) {
 }
 
 async function main() {
+  assertValidSeedEans(products);
   const idBySlug = await seedCategories(categoryTree, null);
   await seedProducts(idBySlug);
   console.log(`Seed fertig: ${idBySlug.size} Kategorien, ${products.length} Produkte.`);

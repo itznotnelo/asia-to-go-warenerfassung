@@ -39,6 +39,8 @@ const product: Product = {
   dataSource: "manual",
   dataComplete: false,
   notes: null,
+  kind: "food",
+  archivedAt: null,
   createdAt: new Date("2026-01-02T10:00:00.000Z"),
   updatedAt: new Date("2026-01-03T11:00:00.000Z"),
 };

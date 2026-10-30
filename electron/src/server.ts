@@ -27,7 +27,13 @@ async function waitForReady(url: string, timeoutMs: number): Promise<void> {
 // HOSTNAME=127.0.0.1 (loopback only) avoids an unnecessary Windows Firewall
 // prompt for what's a single-user local app — this never needs to be
 // reachable from other machines.
-export async function startNextServer(databaseUrl: string, offContactEmail: string): Promise<RunningServer> {
+// onUnexpectedExit: the Next process ended without stop() (crash, OOM). It is
+// not called for an exit during waitForReady; that rejects the start instead.
+export async function startNextServer(
+  databaseUrl: string,
+  offContactEmail: string,
+  onUnexpectedExit?: (code: number | null, signal: NodeJS.Signals | null) => void,
+): Promise<RunningServer> {
   const port = await findFreePort();
   const cwd = standaloneDir();
   const serverEntry = path.join(cwd, "server.js");
@@ -50,13 +56,29 @@ export async function startNextServer(databaseUrl: string, offContactEmail: stri
   child.stderr?.on("data", (chunk: Buffer) => log.error("[next]", chunk.toString().trim()));
   child.on("error", (err) => log.error("[next] failed to start", err));
 
+  let ready = false;
+  let stopping = false;
+  child.on("exit", (code, signal) => {
+    log[stopping ? "info" : "error"](`[next] exited (code ${code}, signal ${signal})`);
+    if (ready && !stopping) onUnexpectedExit?.(code, signal);
+  });
+
   const url = `http://127.0.0.1:${port}`;
-  await waitForReady(url, 30_000);
+  try {
+    await waitForReady(url, 30_000);
+  } catch (err) {
+    stopping = true;
+    child.kill();
+    throw err;
+  }
+  ready = true;
 
   return {
     url,
     stop: () =>
       new Promise((resolve) => {
+        stopping = true;
+        if (child.exitCode !== null || child.signalCode !== null) return resolve();
         const forceTimeout = setTimeout(resolve, 5000);
         child.once("exit", () => {
           clearTimeout(forceTimeout);

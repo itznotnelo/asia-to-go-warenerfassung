@@ -6,7 +6,19 @@ import { runMigrations } from "./migrate";
 import { seedCategoriesIfEmpty } from "./seed-categories";
 import { startNextServer, RunningServer } from "./server";
 import { loadConfig, saveConfig } from "./config";
-import { initAutoUpdater } from "./updater";
+import { initAutoUpdater, installUpdateInsteadOfQuit } from "./updater";
+import {
+  createErrorThrottle,
+  crashDecision,
+  fatalActionFromUrl,
+  fatalScreenHtml,
+  isRealLoadFailure,
+  parseCrashRelaunches,
+  relaunchArgs,
+  watchLiveness,
+  type FatalKind,
+} from "./app-health";
+import { PG_STOP_TIMEOUT_MS } from "./postgres";
 import { prismaDir, resourcesRoot } from "./paths";
 import { findFreePort } from "./find-free-port";
 import * as backup from "./backup";
@@ -43,8 +55,21 @@ let backupRunner: backup.BackupRunner | null = null;
 let backupTimer: NodeJS.Timeout | null = null;
 // True from R3 until the R4 screen shows: window close and quit are blocked.
 let restoring = false;
+let shuttingDown = false;
+let fatalWindow: BrowserWindow | null = null;
+let stopPostgresWatch: (() => void) | null = null;
+const startedAt = Date.now();
+
+// The default 1 MB rotated away the first failure before anyone looked.
+log.transports.file.maxSize = 10 * 1024 * 1024;
 
 const SYNC_POLL_INTERVAL_MS = 60_000;
+const SYNC_ERROR_LOG_WINDOW_MS = 30 * 60 * 1000;
+const POSTGRES_WATCH_INTERVAL_MS = 15_000;
+// Next stop (up to 5 s) + pg_ctl stop budget + margin (review should 21).
+const FORCE_EXIT_MS = 5_000 + PG_STOP_TIMEOUT_MS + 5_000;
+// A failed boot waits this long for a fixed release to download (should 22).
+const FAILED_BOOT_UPDATE_WAIT_MS = 10 * 60 * 1000;
 const BACKUP_TICK_INTERVAL_MS = 60 * 60 * 1000;
 // embedded-postgres major; the bundled pg_dump must match (storage design 1).
 const PG_MAJOR = 18;
@@ -86,17 +111,48 @@ function promptForOffContactEmail(): Promise<string> {
   });
 }
 
-function showFatalError(err: unknown): void {
-  const win = new BrowserWindow({ width: 640, height: 360, autoHideMenuBar: true });
-  const message = err instanceof Error ? err.stack ?? err.message : String(err);
-  win.loadURL(
-    `data:text/html,${encodeURIComponent(
-      `<body style="font-family:sans-serif;background:#1c1a17;color:#f2ede4;padding:1.5rem">` +
-        `<h2>Asia To Go konnte nicht gestartet werden</h2>` +
-        `<pre style="white-space:pre-wrap;font-size:0.8rem">${message}</pre>` +
-        `</body>`,
-    )}`,
-  );
+// German, escaped, stack behind <details> (review should 21). The two buttons
+// are links that will-navigate turns into actions.
+function showFatalError(err: unknown, kind: FatalKind = "boot"): void {
+  if (fatalWindow && !fatalWindow.isDestroyed()) {
+    fatalWindow.focus();
+    return;
+  }
+  const logPath = log.transports.file.getFile().path;
+  const win = new BrowserWindow({ width: 680, height: 460, autoHideMenuBar: true, title: "Asia To Go" });
+  fatalWindow = win;
+  win.on("closed", () => (fatalWindow = null));
+  win.webContents.setWindowOpenHandler(() => ({ action: "deny" }));
+  win.webContents.on("will-navigate", (event, url) => {
+    event.preventDefault();
+    const action = fatalActionFromUrl(url);
+    if (action === "openLog") shell.showItemInFolder(logPath);
+    if (action === "restart") {
+      // A manual restart gets a fresh crash budget.
+      app.relaunch({ args: relaunchArgs(process.argv.slice(1), 0) });
+      app.quit();
+    }
+  });
+  win.loadURL(`data:text/html;charset=utf-8,${encodeURIComponent(fatalScreenHtml({ kind, error: err, logPath }))}`);
+}
+
+// Next or Postgres died after boot (review should 24): relaunch the whole app,
+// since every start picks new ports; after MAX_CRASH_RELAUNCHES in a row,
+// show the fatal screen instead of looping.
+function onRuntimeFailure(what: string, err: unknown): void {
+  if (shuttingDown || restoring) return;
+  log.error(`[watch] ${what}`, err);
+  const decision = crashDecision({
+    relaunchesSoFar: parseCrashRelaunches(process.argv),
+    uptimeMs: Date.now() - startedAt,
+  });
+  if (decision.action === "relaunch") {
+    log.warn(`[watch] relaunching the app (${decision.count} in a row)`);
+    app.relaunch({ args: relaunchArgs(process.argv.slice(1), decision.count) });
+    app.quit();
+    return;
+  }
+  showFatalError(err, "runtime");
 }
 
 // Ticket #1369: schiebt die Website-Sync-Outbox raus und holt neue
@@ -104,10 +160,19 @@ function showFatalError(err: unknown): void {
 // ohnehin besitzt, siehe waitForReady's eigenes Polling in server.ts), nicht
 // im Next-Server selbst, damit ein Server-Neustart den Timer nicht verdoppelt.
 function startSyncPoll(serverUrl: string): void {
+  // Offline, every pass fails: one line per window, not one per minute.
+  const errors = createErrorThrottle(SYNC_ERROR_LOG_WINDOW_MS);
   const poll = () => {
-    fetch(`${serverUrl}/api/sync/drain`, { method: "POST" }).catch((error) => {
-      log.error("[sync] background poll failed", error);
-    });
+    fetch(`${serverUrl}/api/sync/drain`, { method: "POST" }).then(
+      () => {
+        if (errors.success()) log.info("[sync] background poll works again");
+      },
+      (error) => {
+        const skipped = errors.failure();
+        if (skipped === null) return;
+        log.error(`[sync] background poll failed${skipped ? ` (${skipped} more since the last line)` : ""}`, error);
+      },
+    );
   };
   poll();
   syncPollTimer = setInterval(poll, SYNC_POLL_INTERVAL_MS);
@@ -304,7 +369,7 @@ function registerRestoreIpc(
         saveConfig({ ...loadConfig(), syncPausedAfterRestore: new Date().toISOString() });
       }
       if (screen.startApp) {
-        if (!runningServer) runningServer = await startNextServer(databaseUrl, offContactEmail);
+        if (!runningServer) runningServer = await startNextServer(databaseUrl, offContactEmail, onNextExit);
         startSyncPollUnlessPaused(runningServer.url);
         startBackupSchedule(deps, runner);
       }
@@ -357,7 +422,14 @@ async function bootDevMode(): Promise<void> {
   startSyncPoll(url);
 }
 
+function onNextExit(code: number | null, signal: NodeJS.Signals | null): void {
+  onRuntimeFailure("Next server stopped unexpectedly", new Error(`Next server exited (code ${code}, signal ${signal})`));
+}
+
 async function bootFullPipeline(): Promise<void> {
+  // First, before anything that can fail: a release that can't boot must
+  // still be able to fetch its fix (review should 22).
+  initAutoUpdater();
   const config = loadConfig();
   if (!config.offContactEmail) {
     config.offContactEmail = await promptForOffContactEmail();
@@ -378,10 +450,16 @@ async function bootFullPipeline(): Promise<void> {
         databaseUrl,
         log,
       });
-    // Still look for a fixed release (files' UX 3.1). Keeping the updater
-    // alive after this quit is a should-item (#3080).
-    const stopBoot = () => {
-      initAutoUpdater();
+    // Still look for a fixed release (files' UX 3.1, review should 22): if
+    // one is out, the splash says so and it installs instead of the quit.
+    const stopBoot = async () => {
+      const installing = await installUpdateInsteadOfQuit(() => {
+        void splash.webContents.executeJavaScript(
+          `document.querySelector("h1").textContent = "Neue Version wird geladen…";` +
+            `document.querySelector("p").textContent = "Bitte warten. Asia To Go startet danach von selbst neu.";`,
+        );
+      }, FAILED_BOOT_UPDATE_WAIT_MS);
+      if (installing) return;
       splash.close();
       app.quit();
     };
@@ -395,7 +473,7 @@ async function bootFullPipeline(): Promise<void> {
     if (recovery.status === "failed" || recovery.status === "unclear") {
       log.error("[encoding] refusing to start:", recovery.error);
       await ask(encodingFailedDialog());
-      stopBoot();
+      await stopBoot();
       return;
     }
 
@@ -428,7 +506,7 @@ async function bootFullPipeline(): Promise<void> {
       if (enc.status === "failed") {
         log.error(`[encoding] ${enc.step}: ${enc.error}`);
         await ask(encodingFailedDialog());
-        stopBoot();
+        await stopBoot();
         return;
       }
       if (enc.status === "migrated") {
@@ -440,11 +518,11 @@ async function bootFullPipeline(): Promise<void> {
 
     await prepareBackups(backupDeps);
     if (!(await migrateWithBackupOrStop(backupDeps, databaseUrl))) {
-      stopBoot();
+      await stopBoot();
       return;
     }
     await seedCategoriesIfEmpty(databaseUrl);
-    runningServer = await startNextServer(databaseUrl, config.offContactEmail);
+    runningServer = await startNextServer(databaseUrl, config.offContactEmail, onNextExit);
 
     mainWindow = new BrowserWindow({
       width: 1280,
@@ -456,9 +534,22 @@ async function bootFullPipeline(): Promise<void> {
       webPreferences: { preload: path.join(__dirname, "preload.js") },
     });
     await mainWindow.loadURL(runningServer.url);
+    // After the first load: a later load failing means the server is gone.
+    mainWindow.webContents.on("did-fail-load", (_event, errorCode, errorDescription, url, isMainFrame) => {
+      if (!isRealLoadFailure(errorCode, isMainFrame)) return;
+      onRuntimeFailure("Page load failed", new Error(`did-fail-load ${errorCode} ${errorDescription}: ${url}`));
+    });
     mainWindow.show();
     splash.close();
-    initAutoUpdater();
+    const pg = runningPostgres;
+    if (pg) {
+      stopPostgresWatch = watchLiveness({
+        name: "Postgres",
+        isAlive: () => pg.isAlive(),
+        intervalMs: POSTGRES_WATCH_INTERVAL_MS,
+        onDead: () => onRuntimeFailure("Postgres stopped unexpectedly", new Error("Postgres postmaster is no longer running")),
+      });
+    }
     startSyncPollUnlessPaused(runningServer.url);
     backupRunner = new backup.BackupRunner(backupDeps);
     startBackupSchedule(backupDeps, backupRunner);
@@ -471,20 +562,31 @@ async function bootFullPipeline(): Promise<void> {
   }
 }
 
-app.whenReady().then(() => {
-  const boot = shouldUseFullBootPipeline() ? bootFullPipeline : bootDevMode;
-  boot();
-
-  app.on("activate", () => {
-    if (BrowserWindow.getAllWindows().length === 0) boot();
+// A second double-click used to start a second Postgres on the same pgdata
+// and show "undefined" (review should 21). Now it focuses the open window.
+if (!app.requestSingleInstanceLock()) {
+  app.quit();
+} else {
+  app.on("second-instance", () => {
+    const win = fatalWindow ?? mainWindow ?? BrowserWindow.getAllWindows()[0];
+    if (!win || win.isDestroyed()) return;
+    if (win.isMinimized()) win.restore();
+    win.focus();
   });
-});
+
+  app.whenReady().then(() => {
+    const boot = shouldUseFullBootPipeline() ? bootFullPipeline : bootDevMode;
+    boot();
+
+    app.on("activate", () => {
+      if (BrowserWindow.getAllWindows().length === 0) boot();
+    });
+  });
+}
 
 app.on("window-all-closed", () => {
   if (process.platform !== "darwin") app.quit();
 });
-
-let shuttingDown = false;
 
 app.on("before-quit", (event) => {
   if (restoring) {
@@ -498,6 +600,7 @@ app.on("before-quit", (event) => {
 
   stopSyncPoll();
   stopBackupSchedule();
+  stopPostgresWatch?.();
 
   (async () => {
     // Before the force-exit timer: Papa may choose to wait for a running
@@ -506,7 +609,7 @@ app.on("before-quit", (event) => {
     if (backupRunner?.busy && (await ask(quitWhileBackupDialog())) === 0) {
       await backupRunner.waitIdle();
     }
-    const forceExit = setTimeout(() => app.exit(), 5000);
+    const forceExit = setTimeout(() => app.exit(), FORCE_EXIT_MS);
     try {
       if (runningServer) await runningServer.stop();
       if (runningPostgres) await runningPostgres.stop();

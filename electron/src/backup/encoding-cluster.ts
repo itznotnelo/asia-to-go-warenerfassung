@@ -31,7 +31,7 @@ export interface EmbeddedClusterOptions {
   log: Logger;
 }
 
-function runPgCtl(bin: string, args: string[]): Promise<void> {
+export function runPgCtl(bin: string, args: string[]): Promise<void> {
   return new Promise((resolve, reject) => {
     execFile(bin, args, { windowsHide: true, timeout: 120_000 }, (err, _stdout, stderr) => {
       if (!err) return resolve();

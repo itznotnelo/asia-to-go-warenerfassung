@@ -6,7 +6,7 @@ import path from "node:path";
 // resources live two levels up at the repo root. In a packaged build,
 // electron-builder's extraResources land directly under process.resourcesPath
 // as siblings of the app bundle (resources/app/ is __dirname there).
-function resourcesRoot(): string {
+export function resourcesRoot(): string {
   return app.isPackaged ? process.resourcesPath : path.join(__dirname, "..", "..");
 }
 

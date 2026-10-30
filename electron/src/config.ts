@@ -4,6 +4,9 @@ import path from "node:path";
 
 interface AppConfig {
   offContactEmail?: string;
+  // Second backup copy (USB stick / Nextcloud folder), chosen once in
+  // Einstellungen (files' UX 1.5). Unset = local backups only.
+  backupCopyFolder?: string;
 }
 
 function configPath(): string {

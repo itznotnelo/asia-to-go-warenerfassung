@@ -58,6 +58,21 @@ jobs:
       - name: Prefetch and bundle Prisma schema-engine binary
         run: node scripts/ci-prefetch-prisma-engine.cjs
 
+      # pg_dump/pg_restore for backups (#3060 must 10): embedded-postgres ships
+      # neither. Same major as embedded-postgres; electron-builder.config.js
+      # fails a CI build without pg_dump.exe on purpose.
+      - name: Bundle pg_dump/pg_restore
+        shell: pwsh
+        run: |
+          $v = "18.4-1"   # bump together with embedded-postgres
+          Invoke-WebRequest "https://get.enterprisedb.com/postgresql/postgresql-$v-windows-x64-binaries.zip" -OutFile pg.zip
+          Expand-Archive pg.zip -DestinationPath pgzip
+          $dst = "electron/resources/pg-tools"; New-Item -ItemType Directory -Force $dst | Out-Null
+          Copy-Item pgzip/pgsql/bin/pg_dump.exe, pgzip/pgsql/bin/pg_restore.exe $dst
+          Copy-Item pgzip/pgsql/bin/*.dll $dst
+          & "$dst/pg_dump.exe" --version
+          & "$dst/pg_restore.exe" --version
+
       - name: Build and publish installer
         run: node_modules/.bin/electron-builder --config electron-builder.config.js --win nsis --publish always
         env:

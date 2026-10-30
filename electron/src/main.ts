@@ -1,4 +1,4 @@
-import { app, BrowserWindow, ipcMain } from "electron";
+import { app, BrowserWindow, dialog, ipcMain } from "electron";
 import path from "node:path";
 import log from "electron-log";
 import { startEmbeddedPostgres, RunningPostgres } from "./postgres";
@@ -7,13 +7,28 @@ import { seedCategoriesIfEmpty } from "./seed-categories";
 import { startNextServer, RunningServer } from "./server";
 import { loadConfig, saveConfig } from "./config";
 import { initAutoUpdater } from "./updater";
+import { prismaDir, resourcesRoot } from "./paths";
+import * as backup from "./backup";
+import {
+  blockedDialog,
+  migrateFailedDialog,
+  quitWhileBackupDialog,
+  restoredWaitingDialog,
+  waitingForFixDialog,
+  type DialogSpec,
+} from "./backup-dialogs";
 
 let mainWindow: BrowserWindow | null = null;
 let runningPostgres: RunningPostgres | null = null;
 let runningServer: RunningServer | null = null;
 let syncPollTimer: NodeJS.Timeout | null = null;
+let backupRunner: backup.BackupRunner | null = null;
+let backupTimer: NodeJS.Timeout | null = null;
 
 const SYNC_POLL_INTERVAL_MS = 60_000;
+const BACKUP_TICK_INTERVAL_MS = 60 * 60 * 1000;
+// embedded-postgres major; the bundled pg_dump must match (storage design 1).
+const PG_MAJOR = 18;
 
 function createSplashWindow(): BrowserWindow {
   const win = new BrowserWindow({
@@ -86,6 +101,86 @@ function stopSyncPoll(): void {
   }
 }
 
+async function ask(spec: DialogSpec): Promise<number> {
+  // noLink: keep real buttons on Windows instead of command links.
+  return (await dialog.showMessageBox({ ...spec, noLink: true })).response;
+}
+
+// Leftovers from a crash, stale image snapshots, and a pg_dump self-check
+// whose result the Einstellungen block shows (files' UX 1.3 "broken tool").
+async function prepareBackups(deps: backup.BackupDeps): Promise<void> {
+  if (backup.removeInterruptedRuns(deps.backupsRoot).length > 0) {
+    backup.updateStatus(deps, { lastError: "interrupted" });
+  }
+  backup.pruneImageSnapshots(deps.imagesDir);
+  backup.updateStatus(deps, { toolProblem: await backup.checkPgTools(deps.tools, PG_MAJOR) });
+}
+
+/**
+ * migrate deploy only after a verified "Vor Update" backup (review must 10,
+ * storage 3.3). Returns false when the app must not start Next: the native
+ * dialogs from files' UX 3.1-3.3 have been shown by then.
+ */
+async function migrateWithBackupOrStop(deps: backup.BackupDeps, databaseUrl: string): Promise<boolean> {
+  const migrationsDir = path.join(prismaDir(), "migrations");
+  for (;;) {
+    const outcome = await backup.migrateWithBackup(deps, { migrationsDir, runMigrations: () => runMigrations(databaseUrl) });
+    log.info("[backup] migrate outcome", outcome.status);
+    switch (outcome.status) {
+      case "fresh":
+      case "up-to-date":
+      case "migrated":
+        return true;
+      case "blocked":
+        if ((await ask(blockedDialog(outcome.reason))) === 0) continue;
+        return false;
+      case "waiting-for-fix":
+        await ask(waitingForFixDialog());
+        return false;
+      case "migrate-failed": {
+        log.error("[backup] migrate deploy failed", outcome.error);
+        const manifest = backup.readManifest(outcome.backupDir);
+        if ((await ask(migrateFailedDialog(manifest, new Date()))) !== 0 || !manifest) return false;
+        // Next is not running yet, so there is nothing to stop. No runMigrations:
+        // this version must not migrate again (storage 3.3.4).
+        const result = await backup.restoreBackup(deps, outcome.backupDir, { stopApp: async () => {} });
+        if (!result.ok) {
+          log.error("[backup] restore of the pre-update backup failed", result);
+          await ask(migrateFailedDialog(null, new Date()));
+          return false;
+        }
+        backup.markWaitingForFix(deps);
+        await ask(restoredWaitingDialog(result.manifest, new Date()));
+        return false;
+      }
+    }
+  }
+}
+
+// Hourly: a daily backup when the newest is >20 h old, then the second copy
+// (catches up once the USB stick is back, files' UX 1.5).
+function startBackupSchedule(deps: backup.BackupDeps, runner: backup.BackupRunner): void {
+  const tick = async () => {
+    await runner.runDailyIfDue();
+    const folder = loadConfig().backupCopyFolder;
+    if (!folder) return;
+    const copy = await backup.syncNewestToTarget(deps, folder);
+    if (copy && !copy.ok) log.warn("[backup] second copy failed", copy.error);
+  };
+  const safeTick = () => {
+    tick().catch((err) => log.error("[backup] hourly tick failed", err));
+  };
+  safeTick();
+  backupTimer = setInterval(safeTick, BACKUP_TICK_INTERVAL_MS);
+}
+
+function stopBackupSchedule(): void {
+  if (backupTimer) {
+    clearInterval(backupTimer);
+    backupTimer = null;
+  }
+}
+
 // Fast dev-mode path: point at whatever's already serving the app (pnpm dev,
 // or pnpm start against the Docker Postgres) instead of spinning up embedded
 // Postgres + the standalone build every iteration. Set
@@ -118,7 +213,23 @@ async function bootFullPipeline(): Promise<void> {
 
   try {
     runningPostgres = await startEmbeddedPostgres();
-    await runMigrations(runningPostgres.databaseUrl);
+    const backupDeps = backup.productionDeps({
+      userDataDir: app.getPath("userData"),
+      resourcesRoot: resourcesRoot(),
+      isPackaged: app.isPackaged,
+      appVersion: app.getVersion(),
+      databaseUrl: runningPostgres.databaseUrl,
+      log,
+    });
+    await prepareBackups(backupDeps);
+    if (!(await migrateWithBackupOrStop(backupDeps, runningPostgres.databaseUrl))) {
+      // Still look for a fixed release (files' UX 3.1). Keeping the updater
+      // alive after this quit is a should-item (#3080).
+      initAutoUpdater();
+      splash.close();
+      app.quit();
+      return;
+    }
     await seedCategoriesIfEmpty(runningPostgres.databaseUrl);
     runningServer = await startNextServer(runningPostgres.databaseUrl, config.offContactEmail);
 
@@ -134,6 +245,8 @@ async function bootFullPipeline(): Promise<void> {
     splash.close();
     initAutoUpdater();
     startSyncPoll(runningServer.url);
+    backupRunner = new backup.BackupRunner(backupDeps);
+    startBackupSchedule(backupDeps, backupRunner);
   } catch (err) {
     log.error("Failed to start Asia To Go", err);
     splash.close();
@@ -162,9 +275,16 @@ app.on("before-quit", (event) => {
   event.preventDefault();
 
   stopSyncPoll();
-  const forceExit = setTimeout(() => app.exit(), 5000);
+  stopBackupSchedule();
 
   (async () => {
+    // Before the force-exit timer: Papa may choose to wait for a running
+    // backup (files' UX 1.4). Closing anyway leaves a .tmp-* folder that the
+    // next start removes.
+    if (backupRunner?.busy && (await ask(quitWhileBackupDialog())) === 0) {
+      await backupRunner.waitIdle();
+    }
+    const forceExit = setTimeout(() => app.exit(), 5000);
     try {
       if (runningServer) await runningServer.stop();
       if (runningPostgres) await runningPostgres.stop();

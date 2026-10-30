@@ -19,6 +19,8 @@ interface BackupStatusResponse {
   newest: { manifest: { createdAt: string } | null } | null;
   copyFolder: string | null;
   busy: boolean;
+  // Set after a restore until the articles were sent again (files' UX R4a).
+  syncPausedSince: string | null;
 }
 
 type CreateResponse = {
@@ -34,6 +36,7 @@ interface BackupApi extends RestoreApi {
   chooseCopyFolder(): Promise<ChooseResponse>;
   removeCopyFolder(): Promise<{ removed: boolean }>;
   openFolder(): Promise<string>;
+  resumeSync(): Promise<{ ok: boolean }>;
 }
 
 declare global {

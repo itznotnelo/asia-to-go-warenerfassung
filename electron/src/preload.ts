@@ -16,6 +16,7 @@ contextBridge.exposeInMainWorld("backupApi", {
   pickExternalFolder: () => ipcRenderer.invoke("backup:pickExternalFolder"),
   currentCounts: () => ipcRenderer.invoke("backup:currentCounts"),
   restore: (id: string) => ipcRenderer.invoke("backup:restore", id),
+  resumeSync: () => ipcRenderer.invoke("backup:resumeSync"),
 });
 
 // Restore screens R3/R4 (restore.html): main pushes the state, buttons answer.

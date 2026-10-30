@@ -1,6 +1,7 @@
 import { loadPendingOutboxCount, loadShopSyncSettings, loadStuckOutboxCount } from "./actions";
 import { SettingsForm } from "./settings-form";
 import { BackupSection } from "@/components/backup-section";
+import { SyncPausedBox } from "@/components/sync-paused-box";
 
 export const dynamic = "force-dynamic";
 
@@ -33,6 +34,7 @@ export default async function SettingsPage() {
         Schlüssel kommen aus dem Setup-Skript des Backends — einmal dort ausführen, dann hier
         eintragen.
       </p>
+      <SyncPausedBox />
       <SettingsForm initialSettings={settings} initialPendingCount={pendingCount} initialStuckCount={stuckCount} />
     </div>
   );

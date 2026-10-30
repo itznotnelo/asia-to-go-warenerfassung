@@ -230,6 +230,26 @@ function registerRestoreIpc(
   let answer: ((action: RestoreAction) => void) | null = null;
   let report = "";
 
+  // Full re-publish, then the poll may run again. Only a working send lifts the pause.
+  const republish = async (): Promise<boolean> => {
+    if (!runningServer) return false;
+    try {
+      const res = await fetch(`${runningServer.url}/api/sync/republish`, { method: "POST" });
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    } catch (err) {
+      log.error("[restore] republish failed", err);
+      return false;
+    }
+    const config = loadConfig();
+    delete config.syncPausedAfterRestore;
+    saveConfig(config);
+    startSyncPollUnlessPaused(runningServer.url);
+    return true;
+  };
+
+  // sync.pausedAfterRestore box: [Jetzt neu senden].
+  ipcMain.handle("backup:resumeSync", async () => ({ ok: await republish() }));
+
   ipcMain.handle("restore:action", async (_event, action: RestoreAction) => {
     if (action === "copyReport") return clipboard.writeText(report);
     if (action === "openFolder") return void (await shell.openPath(deps.backupsRoot));
@@ -298,19 +318,11 @@ function registerRestoreIpc(
           await win.loadURL(`${runningServer.url}/settings${action === "chooseOther" ? "#zurueckholen" : ""}`);
           return;
         }
-        try {
-          const res = await fetch(`${runningServer.url}/api/sync/republish`, { method: "POST" });
-          if (!res.ok) throw new Error(`HTTP ${res.status}`);
-          const config = loadConfig();
-          delete config.syncPausedAfterRestore;
-          saveConfig(config);
-          startSyncPollUnlessPaused(runningServer.url);
+        if (await republish()) {
           await win.loadURL(`${runningServer.url}/settings`);
           return;
-        } catch (err) {
-          log.error("[restore] republish failed", err);
-          send({ phase: "result", screen, notice: REPUBLISH_FAILED });
         }
+        send({ phase: "result", screen, notice: REPUBLISH_FAILED });
       }
     } catch (err) {
       log.error("[restore] unexpected failure", err);

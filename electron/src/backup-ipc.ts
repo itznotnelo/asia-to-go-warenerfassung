@@ -30,6 +30,7 @@ export function registerBackupIpc(deps: backup.BackupDeps, runner: backup.Backup
     newest: backup.newestVerified(root),
     copyFolder: loadConfig().backupCopyFolder ?? null,
     busy: runner.busy,
+    syncPausedSince: loadConfig().syncPausedAfterRestore ?? null,
   }));
 
   // Joins a daily run that is already going (BackupRunner is single-flight).

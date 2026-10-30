@@ -9,7 +9,7 @@ const LINKS = [
   { href: "/products", label: "Artikel" },
   { href: "/orders", label: "Bestellungen" },
   { href: "/dashboard", label: "Dashboard" },
-  { href: "/settings", label: "Website-Sync" },
+  { href: "/settings", label: "Einstellungen" },
 ];
 
 /** Persistente Navigation auf jeder Seite — vorher hatte /scan gar keine Links zu den anderen Seiten. */

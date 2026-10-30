@@ -25,7 +25,11 @@ const REASON_TEXT: Record<BackupFailureReason, string> = {
   unknown: "unbekannter Fehler",
 };
 
-const WEEKDAYS = ["So", "Mo", "Di", "Mi", "Do", "Fr", "Sa"];
+export function backupReasonText(reason: BackupFailureReason): string {
+  return REASON_TEXT[reason];
+}
+
+const WEEKDAYS =["So", "Mo", "Di", "Mi", "Do", "Fr", "Sa"];
 const DAY_MS = 86_400_000;
 const OLD_AFTER_MS = 2 * DAY_MS;
 const TOO_OLD_AFTER_MS = 7 * DAY_MS;

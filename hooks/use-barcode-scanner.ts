@@ -11,9 +11,16 @@ import { playScanError, playScanSuccess } from "@/lib/scan-feedback";
 // verfälschen.
 const FAST_CHAR_GAP_MS = 50;
 const STALE_BUFFER_GAP_MS = 300;
+// Outside a field the burst is judged by its average gap, so a slightly slow
+// (wireless) scanner with a few 50-80ms gaps still counts. Inside a field the
+// strict per-gap rule above stays, because there a false hit would undo typing.
+const MAX_AVG_SCAN_GAP_MS = 80;
 // A burst into a focused field only counts as a scan from EAN-8 upwards, so a
 // fast typist entering a short price is never taken for the scanner.
 const MIN_FIELD_SCAN_DIGITS = 8;
+// 8+ digits plus Enter that were too slow for a scan: most likely a scanner
+// at its limit, so the user gets the error tone instead of silence.
+const MIN_REJECTED_SCAN_DIGITS = 8;
 
 // Modifier/Navigationstasten allein unterbrechen einen laufenden Scan nicht,
 // lösen aber auch kein Zeichen aus.
@@ -31,6 +38,8 @@ export interface UseBarcodeScannerOptions {
   enabled?: boolean;
   /** `false` = no success/error tone (for the field guard on pages without a scan workflow). */
   feedback?: boolean;
+  /** 8+ digits and Enter arrived, but too slowly for a scan (only outside text fields). */
+  onRejectedScan?: () => void;
 }
 
 export interface UseBarcodeScannerResult {
@@ -82,18 +91,24 @@ function reportScan(onScan: (result: ScanResult) => void, raw: string, feedback 
   onScan({ barcode, valid });
 }
 
-export function useBarcodeScanner({ onScan, enabled = true, feedback = true }: UseBarcodeScannerOptions): UseBarcodeScannerResult {
+/** True when the digits came in fast enough on average to be a scanner. */
+export function isScannerSpeed(digitCount: number, firstCharTime: number, lastCharTime: number): boolean {
+  if (digitCount < 2) return true;
+  return (lastCharTime - firstCharTime) / (digitCount - 1) <= MAX_AVG_SCAN_GAP_MS;
+}
+
+export function useBarcodeScanner({ onScan, enabled = true, feedback = true, onRejectedScan }: UseBarcodeScannerOptions): UseBarcodeScannerResult {
   const onScanRef = useRef(onScan);
   onScanRef.current = onScan;
+  const onRejectedScanRef = useRef(onRejectedScan);
+  onRejectedScanRef.current = onRejectedScan;
 
   useEffect(() => {
     if (!enabled) return;
 
     let buffer = "";
+    let firstCharTime = 0;
     let lastCharTime = 0;
-    // Wird auf `false` gesetzt, sobald ein Zeichenabstand >= 50ms auftrat —
-    // dann ist es kein Scanner, sondern jemand tippt zufällig Ziffern.
-    let looksLikeScanner = true;
 
     // Burst into a focused text field. The digits do land in the field (we
     // only know it was the scanner once Enter arrives), so the value from
@@ -109,7 +124,6 @@ export function useBarcodeScanner({ onScan, enabled = true, feedback = true }: U
 
     function reset() {
       buffer = "";
-      looksLikeScanner = true;
     }
 
     function handleFieldKeydown(event: KeyboardEvent, target: TextField) {
@@ -170,10 +184,13 @@ export function useBarcodeScanner({ onScan, enabled = true, feedback = true }: U
 
       if (event.key === "Enter") {
         const barcode = buffer;
-        const scanWasFastEnough = looksLikeScanner;
         reset();
-        if (barcode && scanWasFastEnough) {
+        if (!barcode) return;
+        if (isScannerSpeed(barcode.length, firstCharTime, lastCharTime)) {
           reportScan(onScanRef.current, barcode, feedback);
+        } else if (barcode.length >= MIN_REJECTED_SCAN_DIGITS) {
+          if (feedback) playScanError();
+          onRejectedScanRef.current?.();
         }
         return;
       }
@@ -184,14 +201,10 @@ export function useBarcodeScanner({ onScan, enabled = true, feedback = true }: U
       }
 
       const now = performance.now();
-      if (buffer.length > 0) {
-        const gap = now - lastCharTime;
-        if (gap > STALE_BUFFER_GAP_MS) {
-          reset();
-        } else if (gap >= FAST_CHAR_GAP_MS) {
-          looksLikeScanner = false;
-        }
+      if (buffer.length > 0 && now - lastCharTime > STALE_BUFFER_GAP_MS) {
+        reset();
       }
+      if (buffer.length === 0) firstCharTime = now;
 
       buffer += event.key;
       lastCharTime = now;

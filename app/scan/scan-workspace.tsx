@@ -17,6 +17,7 @@ import type { ProductSummary } from "@/lib/product-summary";
 import type { ProductInput as SaveProductInput } from "@/lib/product-schema";
 
 const SAVE_CONFIRMATION_MS = 1100;
+const SCAN_HINT_MS = 4000;
 
 export function ScanWorkspace({ categories }: { categories: CategoryOption[] }) {
   const [state, dispatch] = useReducer(scanReducer, initialScanState);
@@ -25,9 +26,11 @@ export function ScanWorkspace({ categories }: { categories: CategoryOption[] }) 
   const [lastSaved, setLastSaved] = useState<SaveProductInput | null>(null);
   const [searchOpen, setSearchOpen] = useState(false);
   const [captureMode, setCaptureMode] = useState<"full" | "quick">("full");
+  const [scanRejected, setScanRejected] = useState(false);
 
   async function handleScan(result: ScanResult) {
     setSaveError(null);
+    setScanRejected(false);
     if (!result.valid) {
       dispatch({ type: "scan", result: { kind: "invalid", barcode: result.barcode } });
       return;
@@ -37,7 +40,14 @@ export function ScanWorkspace({ categories }: { categories: CategoryOption[] }) 
     dispatch({ type: "scan", result: lookup });
   }
 
-  const { submitManualBarcode } = useBarcodeScanner({ onScan: handleScan });
+  // A too-slow scan only shows a hint; it never throws away an open form.
+  const { submitManualBarcode } = useBarcodeScanner({ onScan: handleScan, onRejectedScan: () => setScanRejected(true) });
+
+  useEffect(() => {
+    if (!scanRejected) return;
+    const timer = setTimeout(() => setScanRejected(false), SCAN_HINT_MS);
+    return () => clearTimeout(timer);
+  }, [scanRejected]);
 
   // App-weite Shortcuts unabhängig vom Fokus. Ctrl+D wirkt lokal im
   // Formular (dort, wo es etwas zu duplizieren gibt) — siehe ProductForm.
@@ -107,6 +117,12 @@ export function ScanWorkspace({ categories }: { categories: CategoryOption[] }) 
   return (
     <div className="mx-auto flex w-full max-w-2xl flex-col gap-6 px-4 py-10">
       <ScanStatus state={state} />
+
+      {scanRejected && (
+        <p role="alert" className="rounded-md bg-destructive px-4 py-2 text-center text-sm text-destructive-foreground">
+          Scan nicht erkannt. Bitte nochmals scannen oder den Barcode unten eintippen.
+        </p>
+      )}
 
       <ManualEntry onSubmit={submitManualBarcode} />
 

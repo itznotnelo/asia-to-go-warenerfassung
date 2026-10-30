@@ -8,7 +8,7 @@ vi.mock("@/lib/scan-feedback", () => ({
 }));
 
 const { playScanError, playScanSuccess } = await import("@/lib/scan-feedback");
-const { isEditableTarget, useBarcodeScanner } = await import("./use-barcode-scanner");
+const { isEditableTarget, isScannerSpeed, useBarcodeScanner } = await import("./use-barcode-scanner");
 
 const VALID_EAN13 = "3017620422003"; // Nutella, echter Barcode
 const INVALID_EAN13 = "3017620422007"; // Prüfziffer bewusst kaputt
@@ -52,6 +52,14 @@ describe("isEditableTarget", () => {
   });
 });
 
+describe("isScannerSpeed", () => {
+  it("judges the average gap, with 80ms as the limit", () => {
+    expect(isScannerSpeed(13, 0, 12 * 80)).toBe(true);
+    expect(isScannerSpeed(13, 0, 12 * 81)).toBe(false);
+    expect(isScannerSpeed(1, 0, 0)).toBe(true);
+  });
+});
+
 describe("useBarcodeScanner", () => {
   it("recognizes a fast, valid scan and plays the success tone", () => {
     const onScan = vi.fn();
@@ -75,14 +83,55 @@ describe("useBarcodeScanner", () => {
     expect(playScanSuccess).not.toHaveBeenCalled();
   });
 
-  it("ignores slow, human-speed typing instead of treating it as a scan", () => {
+  it("accepts a slightly slow wireless scanner whose average gap stays within 80ms", () => {
     const onScan = vi.fn();
     renderHook(() => useBarcodeScanner({ onScan }));
 
-    typeAsScanner(VALID_EAN13, 80); // > 50ms Zeichenabstand
+    let now = 1000;
+    const nowSpy = vi.spyOn(performance, "now").mockImplementation(() => now);
+    // Gaps alternate 30/75ms: several single gaps >= 50ms, average ~52ms.
+    [...VALID_EAN13].forEach((char, i) => {
+      document.dispatchEvent(new KeyboardEvent("keydown", { key: char, bubbles: true }));
+      now += i % 2 === 0 ? 30 : 75;
+    });
+    document.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", bubbles: true }));
+    nowSpy.mockRestore();
+
+    expect(onScan).toHaveBeenCalledWith({ barcode: VALID_EAN13, valid: true });
+  });
+
+  it("rejects 8+ digits that came too slowly with the error tone and the rejected callback", () => {
+    const onScan = vi.fn();
+    const onRejectedScan = vi.fn();
+    renderHook(() => useBarcodeScanner({ onScan, onRejectedScan }));
+
+    typeAsScanner(VALID_EAN13, 120);
 
     expect(onScan).not.toHaveBeenCalled();
+    expect(onRejectedScan).toHaveBeenCalledOnce();
+    expect(playScanError).toHaveBeenCalledOnce();
     expect(playScanSuccess).not.toHaveBeenCalled();
+  });
+
+  it("stays silent on a few slowly typed digits", () => {
+    const onScan = vi.fn();
+    const onRejectedScan = vi.fn();
+    renderHook(() => useBarcodeScanner({ onScan, onRejectedScan }));
+
+    typeAsScanner("1250", 120);
+
+    expect(onScan).not.toHaveBeenCalled();
+    expect(onRejectedScan).not.toHaveBeenCalled();
+    expect(playScanError).not.toHaveBeenCalled();
+  });
+
+  it("rejects a too-slow scan without a tone when feedback is off", () => {
+    const onRejectedScan = vi.fn();
+    renderHook(() => useBarcodeScanner({ onScan: vi.fn(), onRejectedScan, feedback: false }));
+
+    typeAsScanner(VALID_EAN13, 120);
+
+    expect(onRejectedScan).toHaveBeenCalledOnce();
     expect(playScanError).not.toHaveBeenCalled();
   });
 

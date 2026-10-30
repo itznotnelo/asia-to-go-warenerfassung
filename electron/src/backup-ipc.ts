@@ -4,6 +4,7 @@ import path from "node:path";
 import * as backup from "./backup";
 import { loadConfig, saveConfig } from "./config";
 import { copyFolderRefusal, removeCopyFolderDialog } from "./backup-dialogs";
+import { buildRestoreChoices, preselectedChoice, toChoice } from "./restore-choices";
 
 // Main-side handlers behind the preload's backupApi (files' UX 1.6). Only
 // these named channels exist; the renderer never gets a generic ipcRenderer.
@@ -82,4 +83,45 @@ export function registerBackupIpc(deps: backup.BackupDeps, runner: backup.Backup
     saveConfig(config);
     return { removed: true };
   });
+
+  // Restore R1/R2. Ids handed out here are the only folders backup:restore accepts.
+  ipcMain.handle("backup:restoreChoices", () => {
+    const folder = loadConfig().backupCopyFolder;
+    const copyRoot = folder ? backup.copyRoot(folder) : null;
+    const copy = copyRoot && fs.existsSync(copyRoot) ? backup.listBackups(copyRoot) : [];
+    const { choices, dirs } = buildRestoreChoices(backup.listBackups(root), copy);
+    restoreDirs.clear();
+    for (const [id, dir] of dirs) restoreDirs.set(id, dir);
+    return { choices, preselected: preselectedChoice(choices) };
+  });
+
+  // [Andere Sicherung suchen ...]: one backup folder, e.g. on a USB stick.
+  ipcMain.handle("backup:pickExternalFolder", async (event) => {
+    const win = BrowserWindow.fromWebContents(event.sender);
+    const options: Electron.OpenDialogOptions = { title: "Sicherung suchen", properties: ["openDirectory"] };
+    const picked = win ? await dialog.showOpenDialog(win, options) : await dialog.showOpenDialog(options);
+    const chosen = picked.filePaths[0];
+    if (picked.canceled || !chosen) return { ok: false as const, canceled: true };
+    const manifest = backup.readManifest(chosen);
+    if (!manifest) return { ok: false as const, canceled: false, message: NOT_A_BACKUP };
+    const id = `external:${chosen}`;
+    restoreDirs.set(id, chosen);
+    const choice = toChoice({ pool: manifest.kind, name: path.basename(chosen), dir: chosen, manifest }, "external", id);
+    return { ok: true as const, choice };
+  });
+
+  // R2 "Jetzt": live count(*), null = database not readable (no safety copy possible).
+  ipcMain.handle("backup:currentCounts", async () => {
+    try {
+      const counts = await deps.db.rowCounts(deps.conn);
+      return { products: counts.Product ?? 0, images: counts.ProductImage ?? 0 };
+    } catch {
+      return null;
+    }
+  });
 }
+
+export const NOT_A_BACKUP = "In diesem Ordner ist keine Sicherung der App.";
+
+// id -> backup folder, filled by backup:restoreChoices / backup:pickExternalFolder.
+export const restoreDirs = new Map<string, string>();

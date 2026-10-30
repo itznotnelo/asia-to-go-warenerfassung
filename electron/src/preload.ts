@@ -12,4 +12,7 @@ contextBridge.exposeInMainWorld("backupApi", {
   chooseCopyFolder: () => ipcRenderer.invoke("backup:chooseCopyFolder"),
   removeCopyFolder: () => ipcRenderer.invoke("backup:removeCopyFolder"),
   openFolder: () => ipcRenderer.invoke("backup:openFolder"),
+  restoreChoices: () => ipcRenderer.invoke("backup:restoreChoices"),
+  pickExternalFolder: () => ipcRenderer.invoke("backup:pickExternalFolder"),
+  currentCounts: () => ipcRenderer.invoke("backup:currentCounts"),
 });

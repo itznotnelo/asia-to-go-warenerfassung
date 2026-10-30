@@ -6,6 +6,7 @@ import { selectForPrune, backupFolderName } from "../../src/backup/retention";
 import { listBackups, readStatus, removeInterruptedRuns } from "../../src/backup/store";
 import { parseTableDataEntries } from "../../src/backup/pg-tools";
 import { connFromDatabaseUrl } from "../../src/backup";
+import { restoreBackup } from "../../src/backup/restore";
 import { BackupError } from "../../src/backup/types";
 import { Harness, enospc, fabricateBackup, listDir, makeHarness, writeImages } from "./fakes";
 
@@ -93,6 +94,49 @@ describe("createBackup", () => {
     };
     const r = await createBackup(h.deps, "daily");
     expect(r).toMatchObject({ ok: false, reason: "toolMissing" });
+  });
+});
+
+describe("row counts from the dump's snapshot (#3111)", () => {
+  it("writes between the count and pg_dump: manifest matches the dump and the backup restores", async () => {
+    const h = harness();
+    writeImages(h.deps.imagesDir, { "p1/a.jpg": "aaa" });
+    // The app / sync poll add rows after the counts were read, before pg_dump starts.
+    h.ctl.beforeDump = () => {
+      h.ctl.beforeDump = undefined;
+      h.db.tables.Product += 5;
+      h.db.tables.ProductImage += 2;
+    };
+    const r = await createBackup(h.deps, "daily");
+    expect(r.ok).toBe(true);
+    if (!r.ok) return;
+    expect(r.backup.manifest.rowCounts).toMatchObject({ Product: 412, ProductImage: 530 });
+    expect(h.ctl.dumpSnapshots).toEqual(["00000003-0000001B-1"]);
+    expect(h.ctl.snapshots).toEqual({}); // transaction ended after the dump
+    expect(h.db.tables.Product).toBe(417);
+
+    h.setNow(new Date(2026, 9, 30, 14, 0, 0));
+    const restored = await restoreBackup(h.deps, r.backup.dir, { stopApp: async () => undefined });
+    expect(restored).toMatchObject({ ok: true });
+    expect(h.db.tables).toMatchObject({ Product: 412, ProductImage: 530 });
+  });
+
+  it("migrations in the manifest come from the same snapshot", async () => {
+    const h = harness();
+    h.ctl.beforeDump = () => {
+      h.db.migrations = [...(h.db.migrations ?? []), "20261030000000_later"];
+    };
+    const r = await createBackup(h.deps, "manual");
+    expect(r.ok && r.backup.manifest.lastMigration).toBe("20261006001500_add_shop_sync");
+  });
+
+  it("the snapshot is released when pg_dump fails", async () => {
+    const h = harness();
+    h.ctl.dumpError = enospc();
+    const r = await createBackup(h.deps, "daily");
+    expect(r).toMatchObject({ ok: false, reason: "diskFull" });
+    expect(h.ctl.snapshotsOpened).toBe(1);
+    expect(h.ctl.snapshots).toEqual({});
   });
 });
 

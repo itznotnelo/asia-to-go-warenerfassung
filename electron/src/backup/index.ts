@@ -6,7 +6,16 @@ import { BackupDeps, Logger, PgConnection } from "./types";
 // Public surface of the backup engine. Wiring into main.ts: see web's note on #3060.
 
 export * from "./types";
-export { BackupRunner, createBackup, checkFreeSpace, isDailyDue, prunePool, verifyArchive, verifyBackupFolder } from "./engine";
+export {
+  BackupRunner,
+  createBackup,
+  checkFreeSpace,
+  dumpWithCounts,
+  isDailyDue,
+  prunePool,
+  verifyArchive,
+  verifyBackupFolder,
+} from "./engine";
 export { listBackups, newestVerified, readManifest, readStatus, removeInterruptedRuns, updateStatus } from "./store";
 export type { BackupListEntry, BackupStatus } from "./store";
 export { migrateWithBackup, markWaitingForFix, pendingMigrations, migrationFolders } from "./migrate-hook";
@@ -15,9 +24,10 @@ export { restoreBackup, pruneImageSnapshots } from "./restore";
 export type { RestoreHooks, RestoreResult, RestoreStep } from "./restore";
 export { copyBackupToTarget, syncNewestToTarget, copyRoot } from "./second-copy";
 export { checkPgTools, createPgTools, pgToolPath } from "./pg-tools";
-// For the WIN1252 -> UTF8 migration (must 1, web): dump/verify with
-// tools.dump + verifyArchive, new db with recreateUtf8Database, load with tools.restore.
-export { readRowCounts, readServerInfo, readAppliedMigrations, recreateUtf8Database } from "./db";
+// For the WIN1252 -> UTF8 migration (must 1, web): dump + counts from one
+// snapshot with dumpWithCounts, verify with verifyArchive, new db with
+// recreateUtf8Database, load with tools.restore.
+export { openDumpSnapshot, readRowCounts, readServerInfo, readAppliedMigrations, recreateUtf8Database } from "./db";
 
 // "postgresql://user:pw@127.0.0.1:port/db?schema=public" (RunningPostgres.databaseUrl)
 export function connFromDatabaseUrl(databaseUrl: string): PgConnection {

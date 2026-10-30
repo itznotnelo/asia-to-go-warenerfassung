@@ -118,6 +118,24 @@ export function prunePool(backupsRoot: string, pool: Pool): string[] {
   return doomed;
 }
 
+// Counts, migrations and pg_dump all read one exported snapshot (#3111): the
+// app and the sync poll keep writing during daily/manual runs, and counts from
+// another snapshot would make restore.ts reject this backup as "differs".
+export async function dumpWithCounts(
+  deps: Pick<BackupDeps, "conn" | "db" | "tools">,
+  dumpFile: string,
+): Promise<{ rowCounts: Record<string, number>; migrations: string[] }> {
+  const snapshot = await deps.db.openSnapshot(deps.conn);
+  try {
+    const rowCounts = await snapshot.rowCounts();
+    const migrations = (await snapshot.appliedMigrations()) ?? [];
+    await deps.tools.dump(deps.conn, dumpFile, { snapshot: snapshot.id });
+    return { rowCounts, migrations };
+  } finally {
+    await snapshot.release();
+  }
+}
+
 // One backup run (design 2): free-space check, dump, images.zip, verify,
 // manifest, rename, prune. Any failure removes the .tmp folder and prunes nothing.
 export async function createBackup(deps: BackupDeps, pool: Pool): Promise<BackupResult> {
@@ -132,12 +150,10 @@ export async function createBackup(deps: BackupDeps, pool: Pool): Promise<Backup
     fs.mkdirSync(tmpDir);
 
     const info = await deps.db.serverInfo(deps.conn);
-    const migrations = (await deps.db.appliedMigrations(deps.conn)) ?? [];
-    const rowCounts = await deps.db.rowCounts(deps.conn);
 
     // DB first, then images (design 2): a newer image is a harmless orphan.
     const dumpFile = path.join(tmpDir, "db.dump");
-    await deps.tools.dump(deps.conn, dumpFile);
+    const { rowCounts, migrations } = await dumpWithCounts(deps, dumpFile);
     const zipFile = path.join(tmpDir, "images.zip");
     const imageCount = await writeZip(deps.imagesDir, zipFile);
 

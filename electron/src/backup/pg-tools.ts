@@ -72,10 +72,11 @@ export function createPgTools(resolve: (tool: PgToolName) => string): PgTools {
       const { stdout } = await run(resolve(tool), ["--version"]);
       return stdout.trim();
     },
-    async dump(conn, file) {
+    async dump(conn, file, opts) {
+      const snapshot = opts?.snapshot ? [`--snapshot=${opts.snapshot}`] : [];
       await run(
         resolve("pg_dump"),
-        [...connArgs(conn), "-Fc", "--no-owner", "--no-acl", "-f", file],
+        [...connArgs(conn), "-Fc", "--no-owner", "--no-acl", ...snapshot, "-f", file],
         conn.password,
       );
     },

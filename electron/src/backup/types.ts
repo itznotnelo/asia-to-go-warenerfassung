@@ -57,7 +57,9 @@ export interface Logger {
 // pg_dump / pg_restore wrapper (pg-tools.ts in production, a fake in tests).
 export interface PgTools {
   version(tool: "pg_dump" | "pg_restore"): Promise<string>;
-  dump(conn: PgConnection, file: string): Promise<void>;
+  // snapshot = id from DbSnapshot (pg_dump --snapshot), so the dump sees
+  // exactly the rows that were counted for the manifest.
+  dump(conn: PgConnection, file: string, opts?: { snapshot?: string }): Promise<void>;
   // Table names that have a "TABLE DATA public <name>" TOC entry.
   listTableData(file: string): Promise<string[]>;
   // pg_restore -f NUL: reads and decompresses every data block.
@@ -71,9 +73,24 @@ export interface ServerInfo {
   datcollate: string;
 }
 
+// An open REPEATABLE READ transaction that exported its snapshot
+// (pg_export_snapshot). Counts read here match a pg_dump --snapshot=<id> run
+// while it is open, even if the app and the sync poll keep writing.
+export interface DbSnapshot {
+  id: string;
+  rowCounts(): Promise<Record<string, number>>;
+  // null = _prisma_migrations does not exist (fresh database).
+  appliedMigrations(): Promise<string[] | null>;
+  // Ends the transaction. Never throws: once pg_dump has imported the
+  // snapshot, losing this connection does not affect the dump.
+  release(): Promise<void>;
+}
+
 // SQL side via node-postgres (db.ts in production, a fake in tests).
 export interface DbOps {
   rowCounts(conn: PgConnection): Promise<Record<string, number>>;
+  // Backup runs (design 2.2): counts + pg_dump from one snapshot.
+  openSnapshot(conn: PgConnection): Promise<DbSnapshot>;
   serverInfo(conn: PgConnection): Promise<ServerInfo>;
   // null = _prisma_migrations does not exist (fresh database).
   appliedMigrations(conn: PgConnection): Promise<string[] | null>;

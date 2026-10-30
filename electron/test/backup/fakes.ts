@@ -21,7 +21,16 @@ export interface FakeControls {
   truncateDump?: boolean;
   restoreError?: Error;
   restoreErrorOnce?: boolean;
+  // Runs at the start of pg_dump: a write by the app or the sync poll that
+  // lands after the manifest counts were read (#3111).
+  beforeDump?: () => void;
   events: string[];
+  // Exported snapshots that are still open, by id (like pg_export_snapshot:
+  // usable by pg_dump --snapshot only while the exporting tx is open).
+  snapshots: Record<string, { tables: Record<string, number>; migrations: string[] | null }>;
+  snapshotsOpened: number;
+  // --snapshot value of every pg_dump run (undefined = no snapshot).
+  dumpSnapshots: (string | undefined)[];
 }
 
 export function makeTempUserData(): string {
@@ -33,14 +42,22 @@ export function fakeTools(db: FakeDb, ctl: FakeControls): PgTools {
     async version() {
       return "pg_dump (PostgreSQL) 18.4";
     },
-    async dump(_conn, file) {
+    async dump(_conn, file, opts) {
       ctl.events.push("dump");
+      ctl.dumpSnapshots.push(opts?.snapshot);
+      ctl.beforeDump?.();
       if (ctl.dumpError) {
         fs.writeFileSync(file, "PGDMP partial");
         throw ctl.dumpError;
       }
-      const body = JSON.stringify({ tables: db.tables, migrations: db.migrations, pad: "x".repeat(200) });
-      let content = `PGDMP ${Object.keys(db.tables).join(",")}\n${body}`;
+      let state: { tables: Record<string, number>; migrations: string[] | null } = db;
+      if (opts?.snapshot) {
+        const snap = ctl.snapshots[opts.snapshot];
+        if (!snap) throw new Error(`pg_dump: error: invalid snapshot identifier: "${opts.snapshot}"`);
+        state = snap;
+      }
+      const body = JSON.stringify({ tables: state.tables, migrations: state.migrations, pad: "x".repeat(200) });
+      let content = `PGDMP ${Object.keys(state.tables).join(",")}\n${body}`;
       if (ctl.truncateDump) content = content.slice(0, Math.floor(content.length * (2 / 3)));
       fs.writeFileSync(file, content);
     },
@@ -79,6 +96,20 @@ export function fakeDbOps(db: FakeDb, ctl: FakeControls): DbOps {
       if (!db.readable) throw new Error("database unreadable");
       return { ...db.tables };
     },
+    async openSnapshot() {
+      if (!db.readable) throw new Error("database unreadable");
+      const id = `00000003-0000001B-${++ctl.snapshotsOpened}`;
+      const state = { tables: { ...db.tables }, migrations: db.migrations ? [...db.migrations] : null };
+      ctl.snapshots[id] = state;
+      return {
+        id,
+        rowCounts: async () => ({ ...state.tables }),
+        appliedMigrations: async () => (state.migrations ? [...state.migrations] : null),
+        release: async () => {
+          delete ctl.snapshots[id];
+        },
+      };
+    },
     async serverInfo() {
       return { serverVersion: "18.4", serverEncoding: db.encoding, datcollate: "C" };
     },
@@ -111,7 +142,7 @@ export function makeHarness(appVersion = "0.2.0"): Harness {
     migrations: ["20260901000000_init", "20261006001500_add_shop_sync"],
     readable: true,
   };
-  const ctl: FakeControls = { events: [] };
+  const ctl: FakeControls = { events: [], snapshots: {}, snapshotsOpened: 0, dumpSnapshots: [] };
   let now = new Date(2026, 9, 30, 2, 15, 0);
   let free = 50 * 1024 ** 3;
   const deps: BackupDeps = {

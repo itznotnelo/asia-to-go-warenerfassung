@@ -131,6 +131,11 @@ describe("fetchPendingOrders", () => {
     vi.stubGlobal("fetch", vi.fn().mockResolvedValue(jsonResponse({}, false, 401)));
     await expect(fetchPendingOrders(settings)).rejects.toThrow("HTTP 401");
   });
+
+  it("passes a body without items through as undefined for orders.ts to reject", async () => {
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(jsonResponse(null)));
+    await expect(fetchPendingOrders(settings)).resolves.toBeUndefined();
+  });
 });
 
 describe("ackOrder", () => {
@@ -144,5 +149,14 @@ describe("ackOrder", () => {
       "https://atg-shop.example.workers.dev/orders/order_1/ack",
       expect.objectContaining({ method: "POST" }),
     );
+  });
+
+  it("encodes the order id so it cannot change the path", async () => {
+    const fetchSpy = vi.fn().mockResolvedValue(jsonResponse({ applied: true }));
+    vi.stubGlobal("fetch", fetchSpy);
+
+    await ackOrder(settings, "../admin");
+
+    expect(fetchSpy.mock.calls[0][0]).toBe("https://atg-shop.example.workers.dev/orders/..%2Fadmin/ack");
   });
 });

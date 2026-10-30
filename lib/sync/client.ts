@@ -1,5 +1,5 @@
 import "server-only";
-import type { PendingOrder, PublishOp, ShopSyncSettingsValue } from "./types";
+import type { PublishOp, ShopSyncSettingsValue } from "./types";
 
 // A hung backend call would otherwise hold the single-flight sync pass
 // (runner.ts) forever and stall every later sync. Uploads get more time
@@ -68,8 +68,11 @@ export async function uploadImageToBackend(
   return data.r2Key;
 }
 
-/** Only ever returns *paid* orders (filtered server-side) - see atg-shop-backend's handlePendingOrders. */
-export async function fetchPendingOrders(settings: ShopSyncSettingsValue): Promise<PendingOrder[]> {
+/**
+ * Only ever returns *paid* orders (filtered server-side) - see atg-shop-backend's handlePendingOrders.
+ * Returns the raw `items` value; orders.ts validates each order with Zod.
+ */
+export async function fetchPendingOrders(settings: ShopSyncSettingsValue): Promise<unknown> {
   const response = await fetch(apiUrl(settings, "/orders/pending"), {
     headers: authHeaders(settings),
     signal: AbortSignal.timeout(SYNC_FETCH_TIMEOUT_MS),
@@ -77,13 +80,13 @@ export async function fetchPendingOrders(settings: ShopSyncSettingsValue): Promi
   if (!response.ok) {
     throw new Error(`fetch pending orders failed: HTTP ${response.status}`);
   }
-  const data = (await response.json()) as { items: PendingOrder[] };
-  return data.items;
+  const data = (await response.json()) as { items?: unknown } | null;
+  return data?.items;
 }
 
 /** Idempotent on the backend - safe to call again for an order already acked. */
 export async function ackOrder(settings: ShopSyncSettingsValue, orderId: string): Promise<void> {
-  const response = await fetch(apiUrl(settings, `/orders/${orderId}/ack`), {
+  const response = await fetch(apiUrl(settings, `/orders/${encodeURIComponent(orderId)}/ack`), {
     method: "POST",
     headers: authHeaders(settings),
     signal: AbortSignal.timeout(SYNC_FETCH_TIMEOUT_MS),

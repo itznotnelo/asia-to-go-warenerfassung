@@ -18,6 +18,11 @@ function describeResult(result: SyncRunResult): string {
   const parts = [`${result.sent} veröffentlicht`];
   if (result.failed > 0) parts.push(`${result.failed} fehlgeschlagen, wird erneut versucht`);
   if (result.ordersImported > 0) parts.push(`${result.ordersImported} neue Bestellung(en) abgeholt`);
+  if (result.ordersFailed > 0) {
+    // Details are in the log under [sync]; the ids let Papa match the order on the website.
+    const ids = result.failedOrderIds.map((id) => id ?? "ohne ID").join(", ");
+    parts.push(`${result.ordersFailed} Bestellung(en) nicht übernommen, wird erneut versucht (${ids})`);
+  }
   return parts.join(" · ");
 }
 

@@ -26,7 +26,7 @@ beforeEach(() => {
   pushPendingImagesMock.mockReset().mockResolvedValue([]);
   enqueueProductSyncMock.mockReset().mockResolvedValue(undefined);
   drainOutboxMock.mockReset().mockResolvedValue({ sent: 0, stuck:0, failed: 0, skippedNoSettings: false });
-  importPendingOrdersMock.mockReset().mockResolvedValue({ imported: 0, skippedNoSettings: false });
+  importPendingOrdersMock.mockReset().mockResolvedValue({ imported: 0, failed: 0, failedOrderIds: [], skippedNoSettings: false });
 });
 
 describe("runSyncPass", () => {
@@ -42,11 +42,19 @@ describe("runSyncPass", () => {
 
   it("combines the drain and order-import results", async () => {
     drainOutboxMock.mockResolvedValue({ sent: 3, stuck:1, failed: 0, skippedNoSettings: false });
-    importPendingOrdersMock.mockResolvedValue({ imported: 2, skippedNoSettings: false });
+    importPendingOrdersMock.mockResolvedValue({ imported: 2, failed: 1, failedOrderIds: ["order_bad"], skippedNoSettings: false });
 
     const result = await runSyncPass();
 
-    expect(result).toEqual({ sent: 3, stuck:1, failed: 0, ordersImported: 2, skippedNoSettings: false });
+    expect(result).toEqual({
+      sent: 3,
+      stuck: 1,
+      failed: 0,
+      ordersImported: 2,
+      ordersFailed: 1,
+      failedOrderIds: ["order_bad"],
+      skippedNoSettings: false,
+    });
   });
 });
 

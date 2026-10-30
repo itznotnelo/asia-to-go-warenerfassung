@@ -10,6 +10,9 @@ export interface SyncRunResult {
   stuck: number;
   failed: number;
   ordersImported: number;
+  /** Orders the backend offered but this pass could not import; they stay pending and are retried. */
+  ordersFailed: number;
+  failedOrderIds: (string | null)[];
   skippedNoSettings: boolean;
 }
 
@@ -61,6 +64,8 @@ async function runOnePass(): Promise<SyncRunResult> {
     stuck: drainResult.stuck,
     failed: drainResult.failed,
     ordersImported: orderResult.imported,
+    ordersFailed: orderResult.failed,
+    failedOrderIds: orderResult.failedOrderIds,
     skippedNoSettings: drainResult.skippedNoSettings,
   };
 }

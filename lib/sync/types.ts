@@ -57,20 +57,3 @@ export type PublishOp =
   | { op: "upsertCategory"; category: PublishCategoryPayload }
   | { op: "upsert"; product: PublishProductPayload }
   | { op: "delete"; id: string };
-
-export interface PendingOrderItem {
-  productId: string | null;
-  nameDe: string;
-  qty: number;
-}
-
-export interface PendingOrder {
-  id: string;
-  customerName: string;
-  customerPhone: string | null;
-  fulfilmentType: string;
-  totalRappen: number;
-  notes: string | null;
-  createdAt: string;
-  items: PendingOrderItem[];
-}

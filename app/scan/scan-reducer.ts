@@ -6,6 +6,7 @@ export type ScanState =
   | { status: "idle" }
   | { status: "looking-up"; ean: string }
   | { status: "existing"; product: ProductSummary }
+  | { status: "archived"; product: ProductSummary }
   | { status: "new-hit"; ean: string; mapped: MappedOffProduct }
   | { status: "new-miss"; ean: string }
   | { status: "off-error"; ean: string }
@@ -33,6 +34,8 @@ export function scanReducer(_state: ScanState, action: ScanAction): ScanState {
       return { status: "looking-up", ean: result.ean };
     case "existing":
       return { status: "existing", product: result.product };
+    case "archived":
+      return { status: "archived", product: result.product };
     case "off-hit":
       return { status: "new-hit", ean: result.ean, mapped: result.mapped };
     case "off-miss":

@@ -12,6 +12,7 @@ import { SearchPalette } from "./search-palette";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { lookupBarcode, quickUpdateProduct, saveProduct } from "./actions";
+import { restoreProduct } from "@/app/products/actions";
 import { saveErrorLines, settle } from "@/lib/save-error";
 import type { CategoryOption } from "@/lib/category-option";
 import type { ProductSummary } from "@/lib/product-summary";
@@ -104,6 +105,19 @@ export function ScanWorkspace({ categories }: { categories: CategoryOption[] }) 
     dispatch({ type: "saved", message: `${result.product.nameDe} gespeichert (${result.product.sku})` });
   }
 
+  // Restored articles go straight to the quick view, so the scan ends where a normal hit would.
+  async function handleRestore(product: ProductSummary) {
+    setSaving(true);
+    setSaveError(null);
+    const result = await settle(() => restoreProduct(product.id));
+    setSaving(false);
+    if (!result.ok) {
+      setSaveError([result.message]);
+      return;
+    }
+    dispatch({ type: "scan", result: { kind: "existing", product } });
+  }
+
   function handleSelectFromSearch(product: ProductSummary) {
     setSearchOpen(false);
     setSaveError(null);
@@ -164,6 +178,27 @@ export function ScanWorkspace({ categories }: { categories: CategoryOption[] }) 
 
       {state.status === "existing" && (
         <ExistingProductPanel product={state.product} categories={categories} onSave={handleQuickUpdate} onCancel={reset} saving={saving} saveError={saveError} />
+      )}
+
+      {state.status === "archived" && (
+        <div className="flex flex-col gap-3 rounded-lg border border-border p-4">
+          <p className="text-sm">
+            Dieser Barcode gehört zu einem gelöschten Artikel. Wiederherstellen, um ihn wieder zu verwenden.
+          </p>
+          {saveError && (
+            <p role="alert" className="text-sm text-destructive">
+              {saveError.join(" ")}
+            </p>
+          )}
+          <div className="flex gap-2">
+            <Button type="button" disabled={saving} onClick={() => handleRestore(state.product)}>
+              {saving ? "Wird wiederhergestellt …" : "Wiederherstellen"}
+            </Button>
+            <Button type="button" variant="outline" disabled={saving} onClick={reset}>
+              Abbrechen
+            </Button>
+          </div>
+        </div>
       )}
 
       {state.status === "new-hit" &&

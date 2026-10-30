@@ -30,6 +30,13 @@ export function presentStatus(state: ScanState): StatusPresentation {
         className: "bg-primary text-primary-foreground",
         animate: "flash",
       };
+    case "archived":
+      return {
+        label: "Artikel ist gelöscht",
+        detail: `${state.product.nameDe} · ${state.product.sku}`,
+        className: "bg-destructive text-destructive-foreground",
+        animate: "flash",
+      };
     case "new-hit":
       return {
         label: "Neuer Artikel: online gefunden",

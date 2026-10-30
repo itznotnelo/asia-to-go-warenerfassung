@@ -48,7 +48,7 @@ export async function lookupBarcode(rawBarcode: string): Promise<LookupResult> {
   const existing = await prisma.product.findUnique({ where: { ean: barcode } });
   if (existing) {
     await logScan(barcode, "existing_product", existing.id);
-    return { kind: "existing", product: toProductSummary(existing) };
+    return { kind: existing.archivedAt ? "archived" : "existing", product: toProductSummary(existing) };
   }
 
   const lookup = await fetchOffProduct(barcode);

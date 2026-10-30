@@ -42,6 +42,11 @@ describe("scanReducer", () => {
     expect(next).toEqual({ status: "existing", product });
   });
 
+  it("offers Wiederherstellen instead of the quick-view for an archived product", () => {
+    const next = scanReducer(initialScanState, { type: "scan", result: { kind: "archived", product } });
+    expect(next).toEqual({ status: "archived", product });
+  });
+
   it("shows the prefilled form on an OFF hit", () => {
     const mapped = { allergens: [], traces: [], imageUrls: {} };
     const next = scanReducer(initialScanState, {
@@ -75,6 +80,7 @@ describe("scanReducer", () => {
     const states: ScanState[] = [
       { status: "looking-up", ean: "1" },
       { status: "existing", product },
+      { status: "archived", product },
       { status: "new-miss", ean: "1" },
       { status: "off-error", ean: "1" },
       { status: "invalid", barcode: "1" },

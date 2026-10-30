@@ -5,6 +5,7 @@ import {
   parseChfToRappen,
   parseContentAmount,
   roundTo5,
+  vatBreakdown,
   vatRappen,
 } from "@/lib/pricing";
 
@@ -55,6 +56,42 @@ describe("vatRappen", () => {
 
   it("is zero for a zero-rate price", () => {
     expect(vatRappen(1000, 0)).toBe(0);
+  });
+});
+
+describe("vatBreakdown", () => {
+  it("sums gross per rate before rounding (10 x 99 Rp. at 2.6 % is 25, not 10 x 3)", () => {
+    const lines = Array.from({ length: 10 }, () => ({ grossRappen: 99, vatRate: 2.6 }));
+    expect(lines.reduce((sum, line) => sum + vatRappen(line.grossRappen, line.vatRate), 0)).toBe(30);
+    expect(vatBreakdown(lines)).toEqual([{ vatRate: 2.6, grossRappen: 990, netRappen: 965, vatRappen: 25 }]);
+  });
+
+  it("returns one row per rate, sorted 2.6 then 8.1, and net + vat = gross", () => {
+    const rows = vatBreakdown([
+      { grossRappen: 1000, vatRate: 8.1 },
+      { grossRappen: 495, vatRate: 2.6 },
+      { grossRappen: 1290, vatRate: 2.6 },
+      { grossRappen: 350, vatRate: 8.1 },
+    ]);
+    expect(rows).toEqual([
+      { vatRate: 2.6, grossRappen: 1785, netRappen: 1740, vatRappen: 45 },
+      { vatRate: 8.1, grossRappen: 1350, netRappen: 1249, vatRappen: 101 },
+    ]);
+    for (const row of rows) expect(row.netRappen + row.vatRappen).toBe(row.grossRappen);
+  });
+
+  it("matches vatRappen for a single line", () => {
+    expect(vatBreakdown([{ grossRappen: 1000, vatRate: 2.6 }])[0].vatRappen).toBe(vatRappen(1000, 2.6));
+    expect(vatBreakdown([{ grossRappen: 1000, vatRate: 8.1 }])[0].vatRappen).toBe(vatRappen(1000, 8.1));
+  });
+
+  it("is empty for no lines", () => {
+    expect(vatBreakdown([])).toEqual([]);
+  });
+
+  it("refuses unknown rates and non-integer Rappen instead of printing a wrong receipt", () => {
+    expect(() => vatBreakdown([{ grossRappen: 1000, vatRate: 7.7 }])).toThrow(RangeError);
+    expect(() => vatBreakdown([{ grossRappen: 10.5, vatRate: 2.6 }])).toThrow(RangeError);
   });
 });
 

@@ -39,6 +39,45 @@ export function vatRappen(grossRappen: number, rate: number): number {
   return Math.round(grossRappen - grossRappen / (1 + rate / 100));
 }
 
+export interface VatBreakdownLine {
+  grossRappen: number;
+  vatRate: number;
+}
+
+export interface VatBreakdownRow {
+  vatRate: number;
+  grossRappen: number;
+  netRappen: number;
+  vatRappen: number;
+}
+
+/**
+ * MwSt-Ausweis pro Satz für Belege: summiert zuerst die Bruttobeträge je Satz
+ * und rundet dann einmal pro Satz, wie die MWST-Abrechnung. Pro Zeile runden
+ * und summieren driftet ab (10 × 99 Rp. zu 2.6 %: 10 × 3 = 30 statt 25).
+ * Rechnet in Basispunkten (260/810), damit kein Float-Satz in die Rundung kommt.
+ * Wirft bei einem Satz ausser 2.6/8.1 statt einen falschen Beleg zu drucken.
+ */
+export function vatBreakdown(lines: readonly VatBreakdownLine[]): VatBreakdownRow[] {
+  const grossByBasisPoints = new Map<number, number>();
+  for (const line of lines) {
+    if (!Number.isSafeInteger(line.grossRappen)) {
+      throw new RangeError(`grossRappen muss ganzzahlig sein: ${line.grossRappen}`);
+    }
+    if (!VAT_RATES.includes(line.vatRate)) {
+      throw new RangeError(`Unbekannter MwSt-Satz: ${line.vatRate}`);
+    }
+    const basisPoints = Math.round(line.vatRate * 100);
+    grossByBasisPoints.set(basisPoints, (grossByBasisPoints.get(basisPoints) ?? 0) + line.grossRappen);
+  }
+  return [...grossByBasisPoints.entries()]
+    .sort(([a], [b]) => a - b)
+    .map(([basisPoints, grossRappen]) => {
+      const vat = Math.round((grossRappen * basisPoints) / (10_000 + basisPoints));
+      return { vatRate: basisPoints / 100, grossRappen, netRappen: grossRappen - vat, vatRappen: vat };
+    });
+}
+
 /** Rundung der Endsumme auf 5 Rappen (Barzahlung kennt keine 1-/2-Rappen-Stücke). */
 export function roundTo5(rappen: number): number {
   return Math.round(rappen / 5) * 5;

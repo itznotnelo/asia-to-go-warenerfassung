@@ -1,7 +1,8 @@
 import "server-only";
-import { mkdir, writeFile } from "node:fs/promises";
+import { mkdir, rm, writeFile } from "node:fs/promises";
 import path from "node:path";
 import sharp from "sharp";
+import { isPathWithinRoot } from "@/lib/safe-path";
 
 const IMAGE_ROOT = process.env.IMAGE_ROOT ?? path.join(process.cwd(), "data", "images");
 const MAX_EDGE = 1200;
@@ -81,5 +82,24 @@ export async function storeUploadedImage(buffer: Buffer, sku: string, type: stri
   } catch (error) {
     console.error(`[images] Verarbeitung fehlgeschlagen für ${type} (${sku}):`, error);
     return null;
+  }
+}
+
+/**
+ * Entfernt data/images/{sku}/ eines endgültig gelöschten Artikels. Best effort:
+ * ein Fehler wird nur geloggt, das Löschen in der DB ist da schon passiert.
+ * Weigert sich bei allem, was nicht genau ein Ordner unter IMAGE_ROOT ist.
+ */
+export async function removeProductImageDir(sku: string): Promise<void> {
+  const dir = path.join(IMAGE_ROOT, sku);
+  const relative = path.relative(IMAGE_ROOT, dir);
+  if (!sku || relative === "" || relative.includes(path.sep) || !isPathWithinRoot(IMAGE_ROOT, dir)) {
+    console.error(`[images] Bildordner nicht entfernt, ungültige SKU: ${JSON.stringify(sku)}`);
+    return;
+  }
+  try {
+    await rm(dir, { recursive: true, force: true });
+  } catch (error) {
+    console.error(`[images] Bildordner ${sku} konnte nicht entfernt werden:`, error);
   }
 }

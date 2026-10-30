@@ -20,32 +20,60 @@ function hasPrismaCode(error: unknown, code: string): boolean {
   return typeof error === "object" && error !== null && "code" in error && error.code === code;
 }
 
-/** Fortlaufende SKU nach dem letzten vergebenen Wert, nicht nach Artikelanzahl (bleibt stabil, wenn Artikel gelöscht werden). */
-async function generateNextSku(): Promise<string> {
-  const last = await prisma.product.findFirst({
-    where: { sku: { startsWith: "ASIA-" } },
-    orderBy: { sku: "desc" },
-    select: { sku: true },
+export function formatSku(value: number): string {
+  return `ASIA-${String(value).padStart(5, "0")}`;
+}
+
+/**
+ * Fortlaufende SKU aus der SkuCounter-Zeile, in derselben Transaktion wie das
+ * create(): nie aus vorhandenen Artikeln abgeleitet, also wird die SKU eines
+ * gelöschten Artikels nie neu vergeben. Das UPDATE sperrt die Zeile, ein
+ * paralleler Save wartet bis zum Commit und bekommt die nächste Nummer. Ein
+ * Rollback nimmt die Nummer mit zurück, es entstehen keine Lücken.
+ */
+async function createWithNextSku(data: Omit<Prisma.ProductUncheckedCreateInput, "sku">): Promise<Product> {
+  return prisma.$transaction(async (tx) => {
+    const counter = await tx.skuCounter.upsert({
+      where: { id: 1 },
+      create: { id: 1, value: 1 },
+      update: { value: { increment: 1 } },
+    });
+    return tx.product.create({ data: { ...data, sku: formatSku(counter.value) } });
   });
-  const lastNumber = last ? Number(last.sku.slice("ASIA-".length)) : 0;
-  const next = Number.isFinite(lastNumber) ? lastNumber + 1 : 1;
-  return `ASIA-${String(next).padStart(5, "0")}`;
+}
+
+/**
+ * Safety net if the counter is ever behind the products table (row missing,
+ * an ASIA-xxxxx SKU written outside the app): move it to the highest issued
+ * number. Numeric max, text order would put ASIA-100000 before ASIA-99999.
+ * GREATEST, so it never moves backwards.
+ */
+async function resyncSkuCounter(): Promise<void> {
+  const rows = await prisma.$queryRaw<{ max: number | null }[]>`
+    SELECT MAX(CAST(SUBSTRING("sku" FROM 6) AS INTEGER)) AS "max"
+    FROM "Product" WHERE "sku" ~ '^ASIA-[0-9]{1,9}$'`;
+  const highest = rows[0]?.max ?? 0;
+  await prisma.$executeRaw`
+    INSERT INTO "SkuCounter" ("id", "value") VALUES (1, ${highest})
+    ON CONFLICT ("id") DO UPDATE SET "value" = GREATEST("SkuCounter"."value", EXCLUDED."value")`;
 }
 
 /**
  * A unique violation is either the EAN (same article saved twice) or a SKU
- * race between two saves; the SKU case gets one retry with a fresh number.
+ * that already exists because the counter fell behind; the SKU case resyncs
+ * the counter and gets one retry.
  */
 async function insertWithFreshSku(data: Omit<Prisma.ProductUncheckedCreateInput, "sku">): Promise<Product | SaveFailure> {
   for (let attempt = 0; ; attempt++) {
     try {
-      return await prisma.product.create({ data: { ...data, sku: await generateNextSku() } });
+      return await createWithNextSku(data);
     } catch (error) {
       if (!hasPrismaCode(error, "P2002")) throw error;
       if (data.ean && (await prisma.product.findUnique({ where: { ean: data.ean }, select: { id: true } }))) {
         return { ok: false, message: DUPLICATE_EAN_ERROR, fieldErrors: { ean: [DUPLICATE_EAN_ERROR] } };
       }
       if (attempt >= 1) return { ok: false, message: SAVE_FAILED };
+      await resyncSkuCounter();
     }
   }
 }

@@ -39,7 +39,7 @@ beforeEach(() => {
   prismaMock.shopOrder.findUnique.mockReset().mockResolvedValue(null);
   prismaMock.$transaction.mockClear();
   txMock.shopOrder.create.mockReset().mockResolvedValue({});
-  txMock.product.findMany.mockReset().mockResolvedValue([{ id: "prod_1" }]);
+  txMock.product.findMany.mockReset().mockResolvedValue([{ id: "prod_1", sku: "ASIA-00007", vatRate: 2.6 }]);
   txMock.product.updateMany.mockReset().mockResolvedValue({ count: 1 });
   fetchPendingOrdersMock.mockReset();
   ackOrderMock.mockReset().mockResolvedValue(undefined);
@@ -63,7 +63,19 @@ describe("importPendingOrders", () => {
       data: expect.objectContaining({
         id: "order_1",
         createdAt: new Date("2026-10-06T08:15:00.000Z"),
-        items: { create: [{ productId: "prod_1", nameDe: "Jasminreis 5kg", qty: 2 }] },
+        items: {
+          create: [
+            {
+              productId: "prod_1",
+              nameDe: "Jasminreis 5kg",
+              qty: 2,
+              sku: "ASIA-00007",
+              unitPriceRappen: null,
+              vatRate: 2.6,
+              lineTotalRappen: null,
+            },
+          ],
+        },
       }),
     });
     expect(txMock.product.updateMany).toHaveBeenNthCalledWith(1, {
@@ -105,8 +117,16 @@ describe("importPendingOrders", () => {
       data: expect.objectContaining({
         items: {
           create: [
-            { productId: null, nameDe: "Mama Tom Yum", qty: 3 },
-            { productId: "prod_1", nameDe: "Jasminreis 5kg", qty: 1 },
+            { productId: null, nameDe: "Mama Tom Yum", qty: 3, sku: null, unitPriceRappen: null, vatRate: null, lineTotalRappen: null },
+            {
+              productId: "prod_1",
+              nameDe: "Jasminreis 5kg",
+              qty: 1,
+              sku: "ASIA-00007",
+              unitPriceRappen: null,
+              vatRate: 2.6,
+              lineTotalRappen: null,
+            },
           ],
         },
       }),
@@ -182,6 +202,54 @@ describe("importPendingOrders", () => {
       null,
     ]);
     expect(txMock.shopOrder.create).toHaveBeenCalledTimes(1);
+    expect(ackOrderMock).toHaveBeenCalledTimes(1);
+    expect(ackOrderMock).toHaveBeenCalledWith(settings, "order_ok");
+  });
+
+  it("stores the backend's price/VAT snapshot per line, also for a locally deleted product", async () => {
+    fetchPendingOrdersMock.mockResolvedValue([
+      pendingOrder({
+        totalRappen: 2580 + 1000,
+        items: [
+          { productId: "prod_1", nameDe: "Jasminreis 5kg", qty: 2, sku: "ASIA-00007", unitPriceRappen: 1290, lineTotalRappen: 2580, vatRate: 2.6 },
+          { productId: "prod_gone", nameDe: "Sake 0.7l", qty: 1, sku: "ASIA-00031", unitPriceRappen: 1000, lineTotalRappen: 1000, vatRate: 8.1 },
+        ],
+      }),
+    ]);
+
+    const result = await importPendingOrders(settings);
+
+    expect(result.imported).toBe(1);
+    expect(txMock.shopOrder.create.mock.calls[0][0].data.items.create).toEqual([
+      { productId: "prod_1", nameDe: "Jasminreis 5kg", qty: 2, sku: "ASIA-00007", unitPriceRappen: 1290, vatRate: 2.6, lineTotalRappen: 2580 },
+      // Deleted locally: the snapshot from the backend still keeps sku, price and VAT.
+      { productId: null, nameDe: "Sake 0.7l", qty: 1, sku: "ASIA-00031", unitPriceRappen: 1000, vatRate: 8.1, lineTotalRappen: 1000 },
+    ]);
+    expect(txMock.shopOrder.create.mock.calls[0][0].data.fulfilmentType).toBe("pickup");
+  });
+
+  it("rejects orders whose price snapshot is inconsistent, and still imports the rest", async () => {
+    const line = { productId: "prod_1", nameDe: "Jasminreis 5kg", qty: 2, unitPriceRappen: 1290, lineTotalRappen: 2580, vatRate: 2.6 };
+    fetchPendingOrdersMock.mockResolvedValue([
+      // Line totals add up to 2580, the order says 9999.
+      pendingOrder({ id: "order_sum", totalRappen: 9999, items: [line] }),
+      // lineTotal is not unitPrice * qty.
+      pendingOrder({ id: "order_line", items: [{ ...line, lineTotalRappen: 2000 }] }),
+      // Price without line total.
+      pendingOrder({ id: "order_half", items: [{ ...line, lineTotalRappen: undefined }] }),
+      // Prices on one line but not the other.
+      pendingOrder({ id: "order_mixed", totalRappen: 2580 + 450, items: [line, { productId: null, nameDe: "Tofu", qty: 1 }] }),
+      // Not a Swiss VAT rate.
+      pendingOrder({ id: "order_vat", items: [{ ...line, vatRate: 7.7 }] }),
+      // Rappen, not francs.
+      pendingOrder({ id: "order_float", totalRappen: 25.8, items: [{ ...line, unitPriceRappen: 12.9, lineTotalRappen: 25.8 }] }),
+      pendingOrder({ id: "order_ok", items: [line] }),
+    ]);
+
+    const result = await importPendingOrders(settings);
+
+    expect(result.imported).toBe(1);
+    expect(result.failedOrderIds).toEqual(["order_sum", "order_line", "order_half", "order_mixed", "order_vat", "order_float"]);
     expect(ackOrderMock).toHaveBeenCalledTimes(1);
     expect(ackOrderMock).toHaveBeenCalledWith(settings, "order_ok");
   });

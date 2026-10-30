@@ -3,7 +3,27 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 vi.mock("server-only", () => ({}));
 
 const productMock = { create: vi.fn(), update: vi.fn(), findFirst: vi.fn(), findUnique: vi.fn() };
-vi.mock("@/lib/prisma", () => ({ prisma: { product: productMock } }));
+// The SKU counter row, simulated with real transaction semantics: an error
+// inside $transaction rolls the increment back, like Postgres does.
+let counterValue = 41;
+const skuCounterMock = { upsert: vi.fn() };
+const txClient = { product: productMock, skuCounter: skuCounterMock };
+const prismaMock = {
+  product: productMock,
+  skuCounter: skuCounterMock,
+  $transaction: vi.fn(async (fn: (tx: typeof txClient) => Promise<unknown>) => {
+    const before = counterValue;
+    try {
+      return await fn(txClient);
+    } catch (error) {
+      counterValue = before;
+      throw error;
+    }
+  }),
+  $queryRaw: vi.fn(),
+  $executeRaw: vi.fn(),
+};
+vi.mock("@/lib/prisma", () => ({ prisma: prismaMock }));
 
 const isAssignableCategoryMock = vi.fn();
 vi.mock("@/lib/category-guard", () => ({ CATEGORY_ERROR: "Kategorie wählen", isAssignableCategory: isAssignableCategoryMock }));
@@ -13,7 +33,7 @@ vi.mock("@/lib/sync/outbox", () => ({ enqueueProductSync: enqueueProductSyncMock
 vi.mock("@/lib/sync/runner", () => ({ triggerBackgroundDrain: vi.fn() }));
 vi.mock("@/lib/off-images", () => ({ attachOffImages: vi.fn() }));
 
-const { applyQuickUpdate, createProduct, DUPLICATE_EAN_ERROR, PRODUCT_NOT_FOUND } = await import("./save-product");
+const { applyQuickUpdate, createProduct, DUPLICATE_EAN_ERROR, formatSku, PRODUCT_NOT_FOUND } = await import("./save-product");
 const { SAVE_FAILED } = await import("./save-error");
 
 const INPUT = {
@@ -57,6 +77,14 @@ beforeEach(() => {
   productMock.update.mockReset();
   productMock.findFirst.mockReset().mockResolvedValue({ sku: "ASIA-00041" });
   productMock.findUnique.mockReset().mockResolvedValue(null);
+  counterValue = 41;
+  skuCounterMock.upsert.mockReset().mockImplementation(async () => {
+    counterValue += 1;
+    return { id: 1, value: counterValue };
+  });
+  prismaMock.$transaction.mockClear();
+  prismaMock.$queryRaw.mockReset().mockResolvedValue([{ max: 41 }]);
+  prismaMock.$executeRaw.mockReset().mockResolvedValue(1);
   isAssignableCategoryMock.mockReset().mockResolvedValue(true);
   enqueueProductSyncMock.mockReset().mockResolvedValue(undefined);
 });
@@ -76,16 +104,69 @@ describe("createProduct", () => {
 
     expect(result).toEqual({ ok: false, message: DUPLICATE_EAN_ERROR, fieldErrors: { ean: [DUPLICATE_EAN_ERROR] } });
     expect(enqueueProductSyncMock).not.toHaveBeenCalled();
+    expect(prismaMock.$executeRaw).not.toHaveBeenCalled();
   });
 
-  it("retries once with a fresh SKU after a SKU collision", async () => {
-    productMock.findFirst.mockResolvedValueOnce({ sku: "ASIA-00041" }).mockResolvedValueOnce({ sku: "ASIA-00042" });
-    productMock.create.mockRejectedValueOnce(prismaError("P2002")).mockResolvedValueOnce(savedRow("ASIA-00043"));
+  it("takes the SKU from the counter inside the create transaction, never from existing products", async () => {
+    productMock.create.mockResolvedValue(savedRow("ASIA-00042"));
+
+    await createProduct(INPUT);
+
+    expect(prismaMock.$transaction).toHaveBeenCalledTimes(1);
+    expect(skuCounterMock.upsert).toHaveBeenCalledWith({
+      where: { id: 1 },
+      create: { id: 1, value: 1 },
+      update: { value: { increment: 1 } },
+    });
+    expect(productMock.create.mock.calls[0][0].data.sku).toBe("ASIA-00042");
+    expect(productMock.findFirst).not.toHaveBeenCalled();
+    expect(prismaMock.$queryRaw).not.toHaveBeenCalled();
+  });
+
+  it("never reissues the SKU of a deleted newest product", async () => {
+    // ASIA-00042 was issued and its product deleted again: products max is
+    // 41, but the counter already stands at 42.
+    counterValue = 42;
+    productMock.create.mockResolvedValue(savedRow("ASIA-00043"));
+
+    await createProduct(INPUT);
+
+    expect(productMock.create.mock.calls[0][0].data.sku).toBe("ASIA-00043");
+  });
+
+  it("keeps counting past ASIA-99999 (no text-sort stall)", async () => {
+    counterValue = 99_999;
+    productMock.create.mockResolvedValue(savedRow("ASIA-100000"));
+
+    await createProduct(INPUT);
+
+    expect(productMock.create.mock.calls[0][0].data.sku).toBe("ASIA-100000");
+  });
+
+  it("a failed create rolls the counter back, so no number is skipped", async () => {
+    productMock.create.mockRejectedValueOnce(new Error("Can't reach database server"));
+    await expect(createProduct(INPUT)).rejects.toThrow();
+
+    productMock.create.mockResolvedValue(savedRow("ASIA-00042"));
+    await createProduct(INPUT);
+
+    expect(productMock.create.mock.calls.map(([arg]) => arg.data.sku)).toEqual(["ASIA-00042", "ASIA-00042"]);
+  });
+
+  it("on a SKU collision moves the counter past the highest existing SKU and retries once", async () => {
+    // Counter says 41, but ASIA-00042..57 already exist (e.g. a restored older DB).
+    prismaMock.$queryRaw.mockResolvedValue([{ max: 57 }]);
+    prismaMock.$executeRaw.mockImplementation(async () => {
+      counterValue = Math.max(counterValue, 57);
+      return 1;
+    });
+    productMock.create.mockRejectedValueOnce(prismaError("P2002")).mockResolvedValueOnce(savedRow("ASIA-00058"));
 
     const result = await createProduct(INPUT);
 
-    expect(result).toMatchObject({ ok: true, product: { sku: "ASIA-00043" } });
-    expect(productMock.create.mock.calls.map(([arg]) => arg.data.sku)).toEqual(["ASIA-00042", "ASIA-00043"]);
+    expect(result).toMatchObject({ ok: true, product: { sku: "ASIA-00058" } });
+    expect(productMock.create.mock.calls.map(([arg]) => arg.data.sku)).toEqual(["ASIA-00042", "ASIA-00058"]);
+    expect(prismaMock.$executeRaw).toHaveBeenCalledTimes(1);
     expect(enqueueProductSyncMock).toHaveBeenCalledWith("p1");
   });
 
@@ -93,6 +174,7 @@ describe("createProduct", () => {
     productMock.create.mockRejectedValue(prismaError("P2002"));
     await expect(createProduct(INPUT)).resolves.toEqual({ ok: false, message: SAVE_FAILED });
     expect(productMock.create).toHaveBeenCalledTimes(2);
+    expect(prismaMock.$executeRaw).toHaveBeenCalledTimes(1);
   });
 
   it("never stores OFF allergens as confirmed unless the user ticked the box", async () => {
@@ -114,6 +196,14 @@ describe("createProduct", () => {
   it("rethrows other DB errors so the client shows 'Speichern fehlgeschlagen'", async () => {
     productMock.create.mockRejectedValue(new Error("Can't reach database server"));
     await expect(createProduct(INPUT)).rejects.toThrow("Can't reach database server");
+  });
+});
+
+describe("formatSku", () => {
+  it("pads to five digits and grows beyond", () => {
+    expect(formatSku(1)).toBe("ASIA-00001");
+    expect(formatSku(42)).toBe("ASIA-00042");
+    expect(formatSku(123_456)).toBe("ASIA-123456");
   });
 });
 

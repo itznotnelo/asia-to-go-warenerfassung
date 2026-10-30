@@ -5,7 +5,7 @@ import { prisma } from "@/lib/prisma";
 
 const updateStatusSchema = z.object({
   id: z.string().min(1),
-  status: z.enum(["received", "picked", "ready"]),
+  status: z.enum(["received", "picked", "ready", "collected", "cancelled"]),
 });
 
 /** Zwei Klicks weiter je Bestellung (empfangen -> gepickt -> bereit) - keine eigene "zurück"-Aktion nötig, siehe Ticket #1369. */

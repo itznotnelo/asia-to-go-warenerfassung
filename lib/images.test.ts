@@ -4,8 +4,10 @@ vi.mock("server-only", () => ({}));
 
 const mkdirMock = vi.fn();
 const writeFileMock = vi.fn();
+const rmMock = vi.fn();
 vi.mock("node:fs/promises", () => ({
   mkdir: (...args: unknown[]) => mkdirMock(...args),
+  rm: (...args: unknown[]) => rmMock(...args),
   writeFile: (...args: unknown[]) => writeFileMock(...args),
 }));
 
@@ -24,7 +26,7 @@ sharpChain.metadata.mockResolvedValue({ width: 800, height: 600 });
 
 vi.mock("sharp", () => ({ default: vi.fn(() => sharpChain) }));
 
-const { downloadAndStoreImage, storeUploadedImage } = await import("./images");
+const { downloadAndStoreImage, removeProductImageDir, storeUploadedImage } = await import("./images");
 
 function imageResponse(ok = true, status = ok ? 200 : 500) {
   return { ok, status, arrayBuffer: async () => new ArrayBuffer(8) } as Response;
@@ -33,6 +35,7 @@ function imageResponse(ok = true, status = ok ? 200 : 500) {
 beforeEach(() => {
   mkdirMock.mockReset().mockResolvedValue(undefined);
   writeFileMock.mockReset().mockResolvedValue(undefined);
+  rmMock.mockReset().mockResolvedValue(undefined);
 });
 
 afterEach(() => {
@@ -84,5 +87,29 @@ describe("storeUploadedImage", () => {
     writeFileMock.mockReset().mockRejectedValue(new Error("disk full"));
 
     await expect(storeUploadedImage(Buffer.from("x"), "ASIA-00002", "front")).resolves.toBeNull();
+  });
+});
+
+describe("removeProductImageDir", () => {
+  beforeEach(() => {
+    vi.spyOn(console, "error").mockImplementation(() => {});
+  });
+
+  it("removes the product's own image folder recursively", async () => {
+    await removeProductImageDir("ASIA-00042");
+
+    expect(rmMock).toHaveBeenCalledTimes(1);
+    expect(rmMock.mock.calls[0][0]).toMatch(/[\\/]ASIA-00042$/);
+    expect(rmMock.mock.calls[0][1]).toEqual({ recursive: true, force: true });
+  });
+
+  it.each(["", ".", "..", "../data", "ASIA-00042/../..", "a/b"])("refuses anything but one folder under the image root: %j", async (sku) => {
+    await removeProductImageDir(sku);
+    expect(rmMock).not.toHaveBeenCalled();
+  });
+
+  it("only logs when the folder cannot be removed", async () => {
+    rmMock.mockRejectedValue(new Error("EBUSY"));
+    await expect(removeProductImageDir("ASIA-00042")).resolves.toBeUndefined();
   });
 });

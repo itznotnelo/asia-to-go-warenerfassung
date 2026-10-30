@@ -5,7 +5,7 @@ import { Prisma } from "@/lib/generated/prisma/client";
 import { prisma } from "@/lib/prisma";
 import { toProductSummary, type ProductSummary } from "@/lib/product-summary";
 import { allergensConfirmedAtFor, computeDataComplete, isProductComplete, productInputSchema } from "@/lib/product-schema";
-import { storeUploadedImage } from "@/lib/images";
+import { removeProductImageDir, storeUploadedImage } from "@/lib/images";
 import { enqueueProductDeleteSync, enqueueProductSync } from "@/lib/sync/outbox";
 import { triggerBackgroundDrain } from "@/lib/sync/runner";
 import { applyBulkUpdate, type BulkUpdateResult } from "@/lib/bulk-update";
@@ -150,7 +150,9 @@ export async function deleteProduct(id: string): Promise<{ ok: true } | { ok: fa
   // um Kategorie/Felder für einen Upsert nachzuschlagen, aber ein reiner
   // delete-Op braucht nur die id (siehe lib/sync/outbox.ts).
   await enqueueProductDeleteSync(id);
-  await prisma.product.delete({ where: { id } });
+  const deleted = await prisma.product.delete({ where: { id }, select: { sku: true } });
+  // Die SKU wird nie neu vergeben (SkuCounter), der Ordner ist also nur noch Ballast.
+  await removeProductImageDir(deleted.sku);
   triggerBackgroundDrain();
   return { ok: true };
 }

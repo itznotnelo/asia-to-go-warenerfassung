@@ -53,6 +53,14 @@ enum ShopOrderStatus {
   received
   picked
   ready
+  collected
+  cancelled
+}
+
+// Same two values the backend accepts (atg-shop-backend validateOrderInput).
+enum FulfilmentType {
+  pickup
+  delivery
 }
 
 model Category {
@@ -114,6 +122,14 @@ model Product {
   @@index([nameOriginal])
   @@index([isAvailable])
   @@index([dataComplete])
+}
+
+// Single row (id always 1): the last ASIA-xxxxx number handed out. Bumped in
+// the same transaction as the product create, so a SKU is never issued twice,
+// not even after the newest product was deleted - see lib/save-product.ts.
+model SkuCounter {
+  id    Int @id @default(1)
+  value Int
 }
 
 model ProductImage {
@@ -195,7 +211,7 @@ model ShopOrder {
   status         ShopOrderStatus @default(received)
   customerName   String
   customerPhone  String?
-  fulfilmentType String
+  fulfilmentType FulfilmentType
   totalRappen    Int
   notes          String?
   createdAt      DateTime        @default(now())
@@ -211,6 +227,13 @@ model ShopOrderItem {
   product   Product?   @relation(fields: [productId], references: [id], onDelete: SetNull)
   nameDe    String
   qty       Int
+  // Snapshot at order time, so later price/VAT edits never rewrite history.
+  // Null only for orders imported before these columns existed, or when the
+  // backend did not send the value (prices are never guessed locally).
+  sku             String?
+  unitPriceRappen Int?
+  vatRate         Decimal? @db.Decimal(3, 1)
+  lineTotalRappen Int?
 
   @@index([orderId])
 }

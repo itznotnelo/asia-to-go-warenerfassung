@@ -5,11 +5,29 @@ import { useTransition } from "react";
 import { Button } from "@/components/ui/button";
 import { updateOrderStatus } from "./actions";
 
-type OrderStatus = "received" | "picked" | "ready";
+type OrderStatus = "received" | "picked" | "ready" | "collected" | "cancelled";
 
-const NEXT_STATUS: Record<OrderStatus, OrderStatus | null> = { received: "picked", picked: "ready", ready: null };
-const STATUS_LABELS: Record<OrderStatus, string> = { received: "Eingegangen", picked: "Gepickt", ready: "Bereit" };
-const NEXT_ACTION_LABELS: Record<OrderStatus, string> = { received: "Als gepickt markieren", picked: "Als bereit markieren", ready: "" };
+const NEXT_STATUS: Record<OrderStatus, OrderStatus | null> = {
+  received: "picked",
+  picked: "ready",
+  ready: null,
+  collected: null,
+  cancelled: null,
+};
+const STATUS_LABELS: Record<OrderStatus, string> = {
+  received: "Eingegangen",
+  picked: "Gepickt",
+  ready: "Bereit",
+  collected: "Abgeholt",
+  cancelled: "Storniert",
+};
+const NEXT_ACTION_LABELS: Record<OrderStatus, string> = {
+  received: "Als gepickt markieren",
+  picked: "Als bereit markieren",
+  ready: "",
+  collected: "",
+  cancelled: "",
+};
 
 interface OrderRow {
   id: string;

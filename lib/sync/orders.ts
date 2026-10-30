@@ -19,13 +19,26 @@ async function importOneOrder(settings: ShopSyncSettingsValue, order: ValidPendi
     // ShopOrderItem FK (P2003) - store the line without the link instead,
     // nameDe still says what was ordered.
     const referencedIds = [...new Set(order.items.flatMap((item) => (item.productId ? [item.productId] : [])))];
-    const known = await tx.product.findMany({ where: { id: { in: referencedIds } }, select: { id: true } });
-    const knownIds = new Set(known.map((product) => product.id));
-    const items = order.items.map((item) => ({
-      productId: item.productId && knownIds.has(item.productId) ? item.productId : null,
-      nameDe: item.nameDe,
-      qty: item.qty,
-    }));
+    const known = await tx.product.findMany({
+      where: { id: { in: referencedIds } },
+      select: { id: true, sku: true, vatRate: true },
+    });
+    const knownById = new Map(known.map((product) => [product.id, product]));
+    const items = order.items.map((item) => {
+      const local = item.productId ? knownById.get(item.productId) : undefined;
+      return {
+        productId: local ? local.id : null,
+        nameDe: item.nameDe,
+        qty: item.qty,
+        // Snapshot (#36): prices only from the backend, never guessed here.
+        // SKU and VAT fall back to the local product as it is at import time
+        // (minutes after the order) while the backend does not send them.
+        sku: item.sku ?? local?.sku ?? null,
+        unitPriceRappen: item.unitPriceRappen ?? null,
+        vatRate: item.vatRate ?? local?.vatRate ?? null,
+        lineTotalRappen: item.lineTotalRappen ?? null,
+      };
+    });
 
     await tx.shopOrder.create({
       data: {

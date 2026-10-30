@@ -89,6 +89,11 @@ model Product {
   storageType   StorageType
   ingredientsDe String?
   allergens     String[]    @default([])
+  // "May contain" traces, kept apart from declared allergens (swiss-food-compliance).
+  traces        String[]    @default([])
+  // Set only by the user ticking "Allergene geprüft", never by OFF/AI
+  // pre-fill (hard rule 5). Null = not checked, so the shop must not publish.
+  allergensConfirmedAt DateTime?
   nutrition     Json?
   isAvailable   Boolean     @default(true)
   stockQty      Int?

@@ -10,6 +10,8 @@ import {
   type BackupFailureReason,
   type BackupStatusInput,
 } from "@/lib/backup-state";
+import { RESTORE_TEXT } from "@/lib/restore-text";
+import { RestoreDialog, type RestoreApi } from "@/components/restore-dialog";
 
 // Shapes as sent by electron/src/backup-ipc.ts (structured clone, plain data).
 interface BackupStatusResponse {
@@ -26,7 +28,7 @@ type CreateResponse = {
 
 type ChooseResponse = { ok: true; folder: string } | { ok: false; canceled: boolean; message?: string };
 
-interface BackupApi {
+interface BackupApi extends RestoreApi {
   status(): Promise<BackupStatusResponse>;
   create(): Promise<CreateResponse>;
   chooseCopyFolder(): Promise<ChooseResponse>;
@@ -52,6 +54,7 @@ export function BackupSection() {
   const [info, setInfo] = useState<BackupStatusResponse | null>(null);
   const [running, setRunning] = useState(false);
   const [result, setResult] = useState<{ tone: "ok" | "error"; text: string } | null>(null);
+  const [restoreOpen, setRestoreOpen] = useState(false);
 
   const refresh = useCallback(async (backupApi: BackupApi) => {
     const next = await backupApi.status();
@@ -149,6 +152,15 @@ export function BackupSection() {
           </Button>
         )}
       </p>
+
+      <div className="flex flex-col gap-2 border-t pt-3">
+        <h3 className="font-semibold">{RESTORE_TEXT.sectionTitle}</h3>
+        <p className="text-sm text-muted-foreground">{RESTORE_TEXT.sectionHint}</p>
+        <Button type="button" variant="outline" className="self-start" disabled={running} onClick={() => setRestoreOpen(true)}>
+          {RESTORE_TEXT.open}
+        </Button>
+      </div>
+      {restoreOpen && <RestoreDialog api={api} copyFolder={info.copyFolder} onClose={() => setRestoreOpen(false)} />}
     </section>
   );
 }

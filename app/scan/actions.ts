@@ -1,16 +1,12 @@
 "use server";
 
-import { z } from "zod";
 import { prisma } from "@/lib/prisma";
 import { hasValidBarcodeFormat } from "@/lib/barcode";
 import { fetchOffProduct } from "@/lib/openfoodfacts/client";
 import { mapOffToProduct } from "@/lib/openfoodfacts/mapping";
 import { toProductSummary, type ProductSummary } from "@/lib/product-summary";
-import { computeDataComplete, productInputSchema } from "@/lib/product-schema";
-import { attachOffImages, type OffImageUrls } from "@/lib/off-images";
-import { enqueueProductSync } from "@/lib/sync/outbox";
-import { triggerBackgroundDrain } from "@/lib/sync/runner";
-import { CATEGORY_ERROR, isAssignableCategory } from "@/lib/category-guard";
+import type { OffImageUrls } from "@/lib/off-images";
+import { applyQuickUpdate, createProduct, type SaveProductResult } from "@/lib/save-product";
 import type { CategoryOption } from "@/lib/category-option";
 import type { LookupResult } from "@/lib/lookup-result";
 
@@ -61,101 +57,14 @@ export async function lookupBarcode(barcode: string): Promise<LookupResult> {
   return { kind: "off-miss", ean: barcode };
 }
 
-/** Fortlaufende SKU nach dem letzten vergebenen Wert, nicht nach Artikelanzahl (bleibt stabil, wenn Artikel gelöscht werden). */
-async function generateNextSku(): Promise<string> {
-  const last = await prisma.product.findFirst({
-    where: { sku: { startsWith: "ASIA-" } },
-    orderBy: { sku: "desc" },
-    select: { sku: true },
-  });
-  const lastNumber = last ? Number(last.sku.slice("ASIA-".length)) : 0;
-  const next = Number.isFinite(lastNumber) ? lastNumber + 1 : 1;
-  return `ASIA-${String(next).padStart(5, "0")}`;
-}
-
-type SaveProductResult =
-  | { ok: true; product: ProductSummary }
-  | { ok: false; message: string; fieldErrors?: Record<string, string[] | undefined> };
-
+/** Neuer Artikel vom Scan-Bildschirm, Logik in lib/save-product.ts. */
 export async function saveProduct(rawInput: unknown, offImageUrls?: OffImageUrls): Promise<SaveProductResult> {
-  const parsed = productInputSchema.safeParse(rawInput);
-  if (!parsed.success) {
-    return { ok: false, message: "Bitte Eingaben prüfen.", fieldErrors: parsed.error.flatten().fieldErrors };
-  }
-  const input = parsed.data;
-  if (!(await isAssignableCategory(input.categoryId))) {
-    return { ok: false, message: CATEGORY_ERROR, fieldErrors: { categoryId: [CATEGORY_ERROR] } };
-  }
-
-  const sku = await generateNextSku();
-  const dataComplete = computeDataComplete(input, false);
-
-  let product = await prisma.product.create({
-    data: {
-      ean: input.ean || null,
-      sku,
-      nameDe: input.nameDe,
-      nameOriginal: input.nameOriginal || null,
-      brand: input.brand || null,
-      originCountry: input.originCountry || null,
-      categoryId: input.categoryId,
-      priceRappen: input.priceRappen,
-      vatRate: input.vatRate,
-      unitType: input.unitType,
-      contentAmount: input.contentAmount ?? null,
-      contentUnit: input.contentUnit ?? null,
-      storageType: input.storageType,
-      ingredientsDe: input.ingredientsDe || null,
-      allergens: input.allergens,
-      notes: input.notes || null,
-      dataSource: input.dataSource,
-      dataComplete,
-    },
-  });
-
-  // Best effort: OFF-Bilder herunterladen, wenn welche mitkamen. Ein
-  // Download-Fehler darf den bereits erfolgreichen Save nicht rückgängig
-  // machen — deshalb erst nach dem create(), separat vom Haupt-Flow.
-  if (offImageUrls?.front || offImageUrls?.ingredients || offImageUrls?.nutrition) {
-    const attached = await attachOffImages(product.id, sku, offImageUrls);
-    if (attached > 0) {
-      product = await prisma.product.update({
-        where: { id: product.id },
-        data: { dataComplete: computeDataComplete(input, true) },
-      });
-    }
-  }
-
-  // Ticket #1369: neu erfasste Artikel landen genauso in der Sync-Outbox wie
-  // bearbeitete (meist als "delete"-Op, weil frisch erfasste Artikel ohne
-  // eigenes Foto noch unvollständig sind - harmlos, siehe lib/sync/build-ops.ts).
-  await enqueueProductSync(product.id);
-  triggerBackgroundDrain();
-
-  return { ok: true, product: toProductSummary(product) };
+  return createProduct(rawInput, offImageUrls);
 }
-
-const quickUpdateSchema = z.object({
-  id: z.string().min(1),
-  priceRappen: z.number().int().positive(),
-  isAvailable: z.boolean(),
-});
 
 /** Der <5s-Pfad für einen bereits erfassten Artikel: nur Preis und Verfügbarkeit. */
-export async function quickUpdateProduct(
-  rawInput: unknown,
-): Promise<{ ok: true; product: ProductSummary } | { ok: false; message: string }> {
-  const parsed = quickUpdateSchema.safeParse(rawInput);
-  if (!parsed.success) {
-    return { ok: false, message: "Bitte Eingaben prüfen." };
-  }
-  const { id, priceRappen, isAvailable } = parsed.data;
-  const product = await prisma.product.update({ where: { id }, data: { priceRappen, isAvailable } });
-
-  await enqueueProductSync(id);
-  triggerBackgroundDrain();
-
-  return { ok: true, product: toProductSummary(product) };
+export async function quickUpdateProduct(rawInput: unknown): Promise<SaveProductResult> {
+  return applyQuickUpdate(rawInput);
 }
 
 /** Für Ctrl+K — springt direkt in die Schnellansicht eines bestehenden Artikels. */

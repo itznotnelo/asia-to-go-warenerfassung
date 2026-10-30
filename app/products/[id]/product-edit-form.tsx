@@ -5,7 +5,9 @@ import Link from "next/link";
 import { useId, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { ProductFieldset } from "@/components/product-fieldset";
+import { SaveErrorBox } from "@/components/save-error-box";
 import { inputClass } from "@/lib/input-class";
+import { saveErrorLines, settle } from "@/lib/save-error";
 import type { CategoryOption } from "@/lib/category-option";
 import type { ProductInput as SaveProductInput } from "@/lib/product-schema";
 import type { ProductSummary } from "@/lib/product-summary";
@@ -26,6 +28,7 @@ export function ProductEditForm({ product, categories }: { product: ProductSumma
   const [deleting, setDeleting] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
   const [errors, setErrors] = useState<NumberFieldErrors>({});
+  const [saveError, setSaveError] = useState<string[] | null>(null);
 
   function update<K extends keyof FormValues>(key: K, value: FormValues[K]) {
     setValues((prev) => ({ ...prev, [key]: value }));
@@ -34,6 +37,7 @@ export function ProductEditForm({ product, categories }: { product: ProductSumma
   async function handleSubmit(event: React.FormEvent) {
     event.preventDefault();
     setMessage(null);
+    setSaveError(null);
     const parsed = parseFormNumbers(values);
     if (!parsed.ok) {
       setErrors(parsed.errors);
@@ -62,21 +66,27 @@ export function ProductEditForm({ product, categories }: { product: ProductSumma
       dataSource: product.dataSource,
     };
 
-    const result = await updateProduct({ id: product.id, ...input });
+    const result = await settle(() => updateProduct({ id: product.id, ...input }));
     setSaving(false);
-    setMessage(result.ok ? "Gespeichert." : result.message);
-    if (result.ok) router.refresh();
+    if (!result.ok) {
+      setSaveError(saveErrorLines(result));
+      return;
+    }
+    setMessage("Gespeichert.");
+    router.refresh();
   }
 
   async function handleDelete() {
     if (!window.confirm(`„${product.nameDe}" wirklich löschen?`)) return;
     setDeleting(true);
-    const result = await deleteProduct(product.id);
+    setMessage(null);
+    setSaveError(null);
+    const result = await settle(() => deleteProduct(product.id));
     if (result.ok) {
       router.push("/products");
     } else {
       setDeleting(false);
-      setMessage(result.message);
+      setSaveError(saveErrorLines(result));
     }
   }
 
@@ -93,6 +103,8 @@ export function ProductEditForm({ product, categories }: { product: ProductSumma
       </label>
 
       <ProductFieldset formId={formId} values={values} onChange={update} categories={categories} autoFocusName={false} errors={errors} />
+
+      <SaveErrorBox lines={saveError} />
 
       <div className="flex items-center gap-3">
         <Button type="submit" size="lg" className="h-14 px-6 text-base" disabled={saving}>

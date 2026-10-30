@@ -11,6 +11,8 @@ import type { ProductSummary } from "@/lib/product-summary";
 import { bulkUpdateProducts } from "./actions";
 import type { BulkUpdatePatch } from "@/lib/bulk-update-patch";
 import { BulkActionBar } from "./bulk-action-bar";
+import { SaveErrorBox } from "@/components/save-error-box";
+import { saveErrorLines, settle, type SaveFailure } from "@/lib/save-error";
 
 const STORAGE_LABELS: Record<string, string> = { ambient: "Trocken", chilled: "Gekühlt", frozen: "Tiefgekühlt" };
 const SOURCE_LABELS: Record<string, string> = { openfoodfacts: "OFF", manual: "Manuell", ai_extracted: "KI" };
@@ -26,6 +28,7 @@ export function ProductsTable({ products, categories }: ProductsTableProps) {
   const [editingPriceId, setEditingPriceId] = useState<string | null>(null);
   const [priceDraft, setPriceDraft] = useState("");
   const [priceDraftError, setPriceDraftError] = useState(false);
+  const [updateError, setUpdateError] = useState<string[] | null>(null);
   const [, startTransition] = useTransition();
 
   function toggleSelected(id: string) {
@@ -57,30 +60,33 @@ export function ProductsTable({ products, categories }: ProductsTableProps) {
     setPriceDraftError(false);
     setEditingPriceId(null);
     if (priceRappen === product.priceRappen) return;
-    startTransition(async () => {
-      await quickUpdateProduct({ id: product.id, priceRappen, isAvailable: product.isAvailable });
-      router.refresh();
-    });
+    runUpdate(() => quickUpdateProduct({ id: product.id, priceRappen, isAvailable: product.isAvailable }));
   }
 
   function toggleAvailability(product: ProductSummary) {
-    startTransition(async () => {
-      await quickUpdateProduct({ id: product.id, priceRappen: product.priceRappen, isAvailable: !product.isAvailable });
-      router.refresh();
-    });
+    runUpdate(() => quickUpdateProduct({ id: product.id, priceRappen: product.priceRappen, isAvailable: !product.isAvailable }));
   }
 
   function applyBulk(patch: BulkUpdatePatch) {
     if (selected.size === 0) return;
+    // Selection stays on failure so the change can be retried.
+    runUpdate(() => bulkUpdateProducts({ ids: [...selected], ...patch }), () => setSelected(new Set()));
+  }
+
+  function runUpdate(action: () => Promise<{ ok: true } | SaveFailure>, onSuccess?: () => void) {
+    setUpdateError(null);
     startTransition(async () => {
-      await bulkUpdateProducts({ ids: [...selected], ...patch });
-      setSelected(new Set());
+      const result = await settle(action);
+      if (result.ok) onSuccess?.();
+      else setUpdateError(saveErrorLines(result));
       router.refresh();
     });
   }
 
   return (
     <div className="flex flex-col gap-3">
+      <SaveErrorBox lines={updateError} />
+
       {selected.size > 0 && <BulkActionBar count={selected.size} categories={categories} onApply={applyBulk} disabled={false} />}
 
       <div className="overflow-x-auto rounded-xl border border-border">

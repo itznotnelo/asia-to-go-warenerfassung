@@ -2,6 +2,7 @@
 
 import { useId, useState } from "react";
 import { Button } from "@/components/ui/button";
+import { SaveErrorBox } from "@/components/save-error-box";
 import { inputClass } from "@/lib/input-class";
 import { parseChfToRappen, PRICE_ERROR } from "@/lib/pricing";
 import type { CategoryOption } from "@/lib/category-option";
@@ -17,6 +18,7 @@ interface QuickCaptureFormProps {
   onSave: (input: SaveProductInput) => void;
   onCancel: () => void;
   saving: boolean;
+  saveError: string[] | null;
 }
 
 /**
@@ -24,7 +26,7 @@ interface QuickCaptureFormProps {
  * Scan. Der Artikel landet unvollständig im Arbeitsvorrat (/dashboard) —
  * Details kommen später am Schreibtisch über /products/[id].
  */
-export function QuickCaptureForm({ ean, categories, initialNameDe, dataSource, onSave, onCancel, saving }: QuickCaptureFormProps) {
+export function QuickCaptureForm({ ean, categories, initialNameDe, dataSource, onSave, onCancel, saving, saveError }: QuickCaptureFormProps) {
   const [nameDe, setNameDe] = useState(initialNameDe ?? "");
   const [categoryId, setCategoryId] = useState("");
   const [priceChf, setPriceChf] = useState("");
@@ -107,6 +109,8 @@ export function QuickCaptureForm({ ean, categories, initialNameDe, dataSource, o
           {priceError && <span role="alert" className="text-sm text-destructive">{priceError}</span>}
         </label>
       </div>
+
+      <SaveErrorBox lines={saveError} />
 
       <div className="flex items-center gap-3">
         <Button type="submit" size="lg" className="h-14 px-6 text-base" disabled={saving}>

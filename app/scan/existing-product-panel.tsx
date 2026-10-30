@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { Button } from "@/components/ui/button";
+import { SaveErrorBox } from "@/components/save-error-box";
 import { formatChf, parseChfToRappen, PRICE_ERROR } from "@/lib/pricing";
 import type { CategoryOption } from "@/lib/category-option";
 import type { ProductSummary } from "@/lib/product-summary";
@@ -12,10 +13,11 @@ interface ExistingProductPanelProps {
   onSave: (input: { id: string; priceRappen: number; isAvailable: boolean }) => void;
   onCancel: () => void;
   saving: boolean;
+  saveError: string[] | null;
 }
 
 /** Schnellansicht für einen bereits erfassten Artikel — Preis-Korrektur und Verfügbarkeit, unter 5 Sekunden erledigt. */
-export function ExistingProductPanel({ product, categories, onSave, onCancel, saving }: ExistingProductPanelProps) {
+export function ExistingProductPanel({ product, categories, onSave, onCancel, saving, saveError }: ExistingProductPanelProps) {
   const [priceChf, setPriceChf] = useState((product.priceRappen / 100).toFixed(2));
   const [isAvailable, setIsAvailable] = useState(product.isAvailable);
   const [priceError, setPriceError] = useState<string | null>(null);
@@ -80,6 +82,8 @@ export function ExistingProductPanel({ product, categories, onSave, onCancel, sa
           {saving ? "Speichert …" : "Speichern"}
         </Button>
       </div>
+
+      <SaveErrorBox lines={saveError} />
 
       <p className="text-xs text-muted-foreground">Enter = Speichern · Esc = Abbrechen</p>
     </form>

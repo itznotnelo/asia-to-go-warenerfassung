@@ -3,6 +3,7 @@
 import { useId, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { ProductFieldset } from "@/components/product-fieldset";
+import { SaveErrorBox } from "@/components/save-error-box";
 import type { DataSource } from "@/lib/generated/prisma/client";
 import type { CategoryOption } from "@/lib/category-option";
 import type { ProductInput as SaveProductInput } from "@/lib/product-schema";
@@ -28,9 +29,10 @@ interface ProductFormProps {
   onSave: (input: SaveProductInput) => void;
   onCancel: () => void;
   saving: boolean;
+  saveError: string[] | null;
 }
 
-export function ProductForm({ ean, categories, initial, sourced, lastSaved, dataSource, onSave, onCancel, saving }: ProductFormProps) {
+export function ProductForm({ ean, categories, initial, sourced, lastSaved, dataSource, onSave, onCancel, saving, saveError }: ProductFormProps) {
   const [values, setValues] = useState<FormValues>({ ...EMPTY_VALUES, ...initial });
   const [errors, setErrors] = useState<NumberFieldErrors>({});
   const formId = useId();
@@ -88,6 +90,8 @@ export function ProductForm({ ean, categories, initial, sourced, lastSaved, data
       {ean && <p className="font-numeric text-sm text-muted-foreground">{ean}</p>}
 
       <ProductFieldset formId={formId} values={values} onChange={update} categories={categories} sourced={sourced} errors={errors} />
+
+      <SaveErrorBox lines={saveError} />
 
       <div className="flex items-center gap-3">
         <Button type="submit" size="lg" className="h-14 px-6 text-base" disabled={saving}>

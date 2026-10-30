@@ -11,6 +11,7 @@ import { QuickCaptureForm } from "./quick-capture-form";
 import { SearchPalette } from "./search-palette";
 import { cn } from "@/lib/utils";
 import { lookupBarcode, quickUpdateProduct, saveProduct } from "./actions";
+import { saveErrorLines, settle } from "@/lib/save-error";
 import type { CategoryOption } from "@/lib/category-option";
 import type { ProductSummary } from "@/lib/product-summary";
 import type { ProductInput as SaveProductInput } from "@/lib/product-schema";
@@ -20,11 +21,13 @@ const SAVE_CONFIRMATION_MS = 1100;
 export function ScanWorkspace({ categories }: { categories: CategoryOption[] }) {
   const [state, dispatch] = useReducer(scanReducer, initialScanState);
   const [saving, setSaving] = useState(false);
+  const [saveError, setSaveError] = useState<string[] | null>(null);
   const [lastSaved, setLastSaved] = useState<SaveProductInput | null>(null);
   const [searchOpen, setSearchOpen] = useState(false);
   const [captureMode, setCaptureMode] = useState<"full" | "quick">("full");
 
   async function handleScan(result: ScanResult) {
+    setSaveError(null);
     if (!result.valid) {
       dispatch({ type: "scan", result: { kind: "invalid", barcode: result.barcode } });
       return;
@@ -46,6 +49,7 @@ export function ScanWorkspace({ categories }: { categories: CategoryOption[] }) 
         return;
       }
       if (event.key === "Escape" && !searchOpen && state.status !== "idle" && state.status !== "saved") {
+        setSaveError(null);
         dispatch({ type: "reset" });
       }
     }
@@ -60,34 +64,43 @@ export function ScanWorkspace({ categories }: { categories: CategoryOption[] }) 
     return () => clearTimeout(timer);
   }, [state.status]);
 
+  // settle() never throws, so saving always resets and a failure is always shown.
   async function handleQuickUpdate(input: { id: string; priceRappen: number; isAvailable: boolean }) {
     setSaving(true);
-    const result = await quickUpdateProduct(input);
+    setSaveError(null);
+    const result = await settle(() => quickUpdateProduct(input));
     setSaving(false);
-    if (result.ok) {
-      dispatch({ type: "saved", message: `${result.product.nameDe} aktualisiert` });
+    if (!result.ok) {
+      setSaveError(saveErrorLines(result));
+      return;
     }
+    dispatch({ type: "saved", message: `${result.product.nameDe} aktualisiert` });
   }
 
   async function handleSave(input: SaveProductInput) {
     setSaving(true);
+    setSaveError(null);
     // OFF-Bilder gleich mitschicken, wenn der aktuelle Scan von einem
     // OFF-Treffer kommt — spart den separaten Upload-Schritt für diesen Fall.
     const offImageUrls = state.status === "new-hit" ? state.mapped.imageUrls : undefined;
-    const result = await saveProduct(input, offImageUrls);
+    const result = await settle(() => saveProduct(input, offImageUrls));
     setSaving(false);
-    if (result.ok) {
-      setLastSaved(input);
-      dispatch({ type: "saved", message: `${result.product.nameDe} gespeichert (${result.product.sku})` });
+    if (!result.ok) {
+      setSaveError(saveErrorLines(result));
+      return;
     }
+    setLastSaved(input);
+    dispatch({ type: "saved", message: `${result.product.nameDe} gespeichert (${result.product.sku})` });
   }
 
   function handleSelectFromSearch(product: ProductSummary) {
     setSearchOpen(false);
+    setSaveError(null);
     dispatch({ type: "scan", result: { kind: "existing", product } });
   }
 
   function reset() {
+    setSaveError(null);
     dispatch({ type: "reset" });
   }
 
@@ -115,7 +128,7 @@ export function ScanWorkspace({ categories }: { categories: CategoryOption[] }) 
       </div>
 
       {state.status === "existing" && (
-        <ExistingProductPanel product={state.product} categories={categories} onSave={handleQuickUpdate} onCancel={reset} saving={saving} />
+        <ExistingProductPanel product={state.product} categories={categories} onSave={handleQuickUpdate} onCancel={reset} saving={saving} saveError={saveError} />
       )}
 
       {state.status === "new-hit" &&
@@ -131,6 +144,7 @@ export function ScanWorkspace({ categories }: { categories: CategoryOption[] }) 
                 onSave={handleSave}
                 onCancel={reset}
                 saving={saving}
+                saveError={saveError}
               />
             );
           }
@@ -147,6 +161,7 @@ export function ScanWorkspace({ categories }: { categories: CategoryOption[] }) 
               onSave={handleSave}
               onCancel={reset}
               saving={saving}
+              saveError={saveError}
             />
           );
         })()}
@@ -161,6 +176,7 @@ export function ScanWorkspace({ categories }: { categories: CategoryOption[] }) 
             onSave={handleSave}
             onCancel={reset}
             saving={saving}
+            saveError={saveError}
           />
         ) : (
           <ProductForm
@@ -172,6 +188,7 @@ export function ScanWorkspace({ categories }: { categories: CategoryOption[] }) 
             onSave={handleSave}
             onCancel={reset}
             saving={saving}
+            saveError={saveError}
           />
         ))}
 

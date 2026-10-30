@@ -3,6 +3,7 @@
 // Papa's one-pager quotes these labels word for word: tell files before changing one.
 
 import type { FailureReason, Manifest } from "./backup/types";
+import { MESSAGE_FAILED } from "./backup/encoding-migration";
 
 export interface DialogSpec {
   type: "info" | "warning" | "error";
@@ -105,6 +106,18 @@ export function waitingForFixDialog(): DialogSpec {
     type: "info",
     title: "Asia To Go",
     message: "Die App wartet auf eine reparierte Version. Die Daten sind sicher.",
+    buttons: ["Schliessen"],
+    defaultId: 0,
+    cancelId: 0,
+  };
+}
+
+/** WIN1252 -> UTF8 migration failed or a crashed one is unclear (storage #3112). Old data is never written to. */
+export function encodingFailedDialog(): DialogSpec {
+  return {
+    type: "error",
+    title: "Asia To Go",
+    message: MESSAGE_FAILED,
     buttons: ["Schliessen"],
     defaultId: 0,
     cancelId: 0,

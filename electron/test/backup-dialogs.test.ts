@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   blockedDialog,
+  encodingFailedDialog,
   migrateFailedDialog,
   quitWhileBackupDialog,
   restoredWaitingDialog,
@@ -45,6 +46,12 @@ describe("update dialogs", () => {
     const d = restoredWaitingDialog({ createdAt: new Date(2026, 9, 30, 7, 58).toISOString(), rowCounts: { Product: 412 } }, now);
     expect(d.message).toBe("Die Daten von heute, 07:58 sind zurück (412 Artikel).");
     expect(d.detail).toContain("Bis dahin Ware auf Papier notieren.");
+  });
+
+  it("encoding migration failed: says no data was lost", () => {
+    const d = encodingFailedDialog();
+    expect(d.message).toContain("keine Daten verloren");
+    expect(d.buttons).toEqual(["Schliessen"]);
   });
 
   it("waiting for a fixed version", () => {

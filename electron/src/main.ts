@@ -8,9 +8,13 @@ import { startNextServer, RunningServer } from "./server";
 import { loadConfig, saveConfig } from "./config";
 import { initAutoUpdater } from "./updater";
 import { prismaDir, resourcesRoot } from "./paths";
+import { findFreePort } from "./find-free-port";
 import * as backup from "./backup";
+import { migrateClusterToUtf8, recoverEncodingMigration } from "./backup/encoding-migration";
+import { embeddedClusterOps, embeddedPgCtlPath, pgEncodingChecks } from "./backup/encoding-cluster";
 import {
   blockedDialog,
+  encodingFailedDialog,
   migrateFailedDialog,
   quitWhileBackupDialog,
   restoredWaitingDialog,
@@ -106,12 +110,9 @@ async function ask(spec: DialogSpec): Promise<number> {
   return (await dialog.showMessageBox({ ...spec, noLink: true })).response;
 }
 
-// Leftovers from a crash, stale image snapshots, and a pg_dump self-check
-// whose result the Einstellungen block shows (files' UX 1.3 "broken tool").
+// Stale image snapshots, and a pg_dump self-check whose result the
+// Einstellungen block shows (files' UX 1.3 "broken tool").
 async function prepareBackups(deps: backup.BackupDeps): Promise<void> {
-  if (backup.removeInterruptedRuns(deps.backupsRoot).length > 0) {
-    backup.updateStatus(deps, { lastError: "interrupted" });
-  }
   backup.pruneImageSnapshots(deps.imagesDir);
   backup.updateStatus(deps, { toolProblem: await backup.checkPgTools(deps.tools, PG_MAJOR) });
 }
@@ -212,26 +213,74 @@ async function bootFullPipeline(): Promise<void> {
   const splash = createSplashWindow();
 
   try {
-    runningPostgres = await startEmbeddedPostgres();
-    const backupDeps = backup.productionDeps({
-      userDataDir: app.getPath("userData"),
-      resourcesRoot: resourcesRoot(),
-      isPackaged: app.isPackaged,
-      appVersion: app.getVersion(),
-      databaseUrl: runningPostgres.databaseUrl,
-      log,
-    });
-    await prepareBackups(backupDeps);
-    if (!(await migrateWithBackupOrStop(backupDeps, runningPostgres.databaseUrl))) {
-      // Still look for a fixed release (files' UX 3.1). Keeping the updater
-      // alive after this quit is a should-item (#3080).
+    const userDataDir = app.getPath("userData");
+    const backupsRoot = path.join(userDataDir, "backups");
+    const depsFor = (databaseUrl: string) =>
+      backup.productionDeps({
+        userDataDir,
+        resourcesRoot: resourcesRoot(),
+        isPackaged: app.isPackaged,
+        appVersion: app.getVersion(),
+        databaseUrl,
+        log,
+      });
+    // Still look for a fixed release (files' UX 3.1). Keeping the updater
+    // alive after this quit is a should-item (#3080).
+    const stopBoot = () => {
       initAutoUpdater();
       splash.close();
       app.quit();
+    };
+
+    // Files only, before Postgres starts: crash leftovers of a backup or of
+    // the encoding migration (storage #3112 wiring note, step 1).
+    if (backup.removeInterruptedRuns(backupsRoot).length > 0) {
+      backup.updateStatus({ backupsRoot }, { lastError: "interrupted" });
+    }
+    const recovery = recoverEncodingMigration({ userDataDir, backupsRoot, appVersion: app.getVersion(), log });
+    if (recovery.status === "failed" || recovery.status === "unclear") {
+      log.error("[encoding] refusing to start:", recovery.error);
+      await ask(encodingFailedDialog());
+      stopBoot();
       return;
     }
-    await seedCategoriesIfEmpty(runningPostgres.databaseUrl);
-    runningServer = await startNextServer(runningPostgres.databaseUrl, config.offContactEmail);
+
+    runningPostgres = await startEmbeddedPostgres();
+    let databaseUrl = runningPostgres.databaseUrl;
+    let backupDeps = depsFor(databaseUrl);
+
+    // Never start Next on a non-UTF8 cluster (review must 1, storage design 3.2).
+    const { serverEncoding } = await backup.readServerInfo(backupDeps.conn);
+    if (serverEncoding !== "UTF8") {
+      log.info(`[encoding] cluster is ${serverEncoding}, migrating to UTF8`);
+      const enc = await migrateClusterToUtf8({
+        ...backupDeps,
+        userDataDir,
+        cluster: embeddedClusterOps({ pgCtlPath: embeddedPgCtlPath(__dirname), findFreePort, log }),
+        checks: pgEncodingChecks,
+      });
+      // pg_ctl already stopped the old postmaster; stop() would taskkill a dead pid.
+      if (enc.status === "migrated" || (enc.status === "failed" && enc.oldClusterStopped)) runningPostgres = null;
+      if (enc.status === "failed") {
+        log.error(`[encoding] ${enc.step}: ${enc.error}`);
+        await ask(encodingFailedDialog());
+        stopBoot();
+        return;
+      }
+      if (enc.status === "migrated") {
+        runningPostgres = await startEmbeddedPostgres();
+        databaseUrl = runningPostgres.databaseUrl;
+        backupDeps = depsFor(databaseUrl);
+      }
+    }
+
+    await prepareBackups(backupDeps);
+    if (!(await migrateWithBackupOrStop(backupDeps, databaseUrl))) {
+      stopBoot();
+      return;
+    }
+    await seedCategoriesIfEmpty(databaseUrl);
+    runningServer = await startNextServer(databaseUrl, config.offContactEmail);
 
     mainWindow = new BrowserWindow({
       width: 1280,

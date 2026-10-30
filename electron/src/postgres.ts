@@ -4,6 +4,8 @@ import path from "node:path";
 import log from "electron-log";
 import { pgDataDir } from "./paths";
 import { findFreePort } from "./find-free-port";
+import { UTF8_INITDB_FLAGS } from "./backup/encoding-cluster";
+import { recreateUtf8Database } from "./backup";
 
 const PG_USER = "asia_shop";
 const PG_PASSWORD = "asia_shop";
@@ -27,6 +29,9 @@ export async function startEmbeddedPostgres(): Promise<RunningPostgres> {
     user: PG_USER,
     password: PG_PASSWORD,
     persistent: true,
+    // The library default inherits the Windows locale (WIN1252), which cannot
+    // store Thai/Chinese nameOriginal (review must 1).
+    initdbFlags: UTF8_INITDB_FLAGS,
     onLog: (message) => log.info("[postgres]", message),
     onError: (message) => log.error("[postgres]", message),
   });
@@ -39,7 +44,8 @@ export async function startEmbeddedPostgres(): Promise<RunningPostgres> {
   await pg.start();
 
   if (isFirstRun) {
-    await pg.createDatabase(PG_DATABASE);
+    // Not pg.createDatabase(): plain CREATE DATABASE has no encoding option.
+    await recreateUtf8Database({ host: "127.0.0.1", port, user: PG_USER, password: PG_PASSWORD, database: PG_DATABASE });
   }
 
   const databaseUrl = `postgresql://${PG_USER}:${PG_PASSWORD}@127.0.0.1:${port}/${PG_DATABASE}?schema=public`;

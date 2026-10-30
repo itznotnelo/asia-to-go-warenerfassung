@@ -48,7 +48,8 @@ describe("restoreBackup (design 4, T8)", () => {
     expect(h.db.tables.Product).toBe(412);
     expect(listFilesRecursive(h.deps.imagesDir)).toEqual(["p1/a.jpg", "p1/b.jpg", "p2/c.webp"]);
     const prev = r.ok ? r.previousImagesDir : null;
-    expect(prev && listFilesRecursive(prev)).toEqual(["p1/a.jpg", "p3/new.jpg"]);
+    // The 14:00 folder as it was: b.jpg deleted, c.webp untouched, new.jpg added.
+    expect(prev && listFilesRecursive(prev)).toEqual(["p1/a.jpg", "p2/c.webp", "p3/new.jpg"]);
     expect(h.ctl.events.indexOf("stopApp")).toBeLessThan(h.ctl.events.indexOf("recreateDatabase"));
     expect(h.ctl.events[h.ctl.events.length - 1]).toBe("migrate");
     // Safety copy of the 14:00 state exists in pre-restore.

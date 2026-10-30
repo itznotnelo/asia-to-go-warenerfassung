@@ -6,8 +6,10 @@ import {
   parseFormNumbers,
   productSummaryToFormValues,
   suggestVatRate,
+  VAT_OPTIONS,
+  vatAfterCategoryChange,
 } from "./product-form-helpers";
-import { CONTENT_AMOUNT_ERROR, PRICE_ERROR } from "@/lib/pricing";
+import { CONTENT_AMOUNT_ERROR, PRICE_ERROR, VAT_RATES } from "@/lib/pricing";
 import type { MappedOffProduct } from "@/lib/openfoodfacts/mapping";
 import type { ProductSummary } from "@/lib/product-summary";
 import type { CategoryOption } from "@/lib/category-option";
@@ -60,11 +62,17 @@ describe("mappedOffToFormValues", () => {
   });
 });
 
-describe("suggestVatRate", () => {
-  const alkohol: CategoryOption = { id: "1", name: "Alkohol", parentName: "Getränke" };
-  const kuechenutensilien: CategoryOption = { id: "2", name: "Küchenutensilien", parentName: "Non-Food" };
-  const reis: CategoryOption = { id: "3", name: "Reis", parentName: "Nudeln & Reis" };
+const alkohol: CategoryOption = { id: "1", name: "Alkohol", parentName: "Getränke", slug: "alkohol", parentSlug: "getraenke" };
+const kuechenutensilien: CategoryOption = {
+  id: "2",
+  name: "Küchenutensilien",
+  parentName: "Non-Food",
+  slug: "kuechenutensilien",
+  parentSlug: "non-food",
+};
+const reis: CategoryOption = { id: "3", name: "Reis", parentName: "Nudeln & Reis", slug: "reis", parentSlug: "nudeln-reis" };
 
+describe("suggestVatRate", () => {
   it("suggests 8.1% for Alkohol", () => {
     expect(suggestVatRate(alkohol)).toBe(8.1);
   });
@@ -73,12 +81,50 @@ describe("suggestVatRate", () => {
     expect(suggestVatRate(kuechenutensilien)).toBe(8.1);
   });
 
+  it("suggests 8.1% for the new Kosmetik and Haushalt categories, 2.6% for Öle & Essig", () => {
+    expect(suggestVatRate({ slug: "kosmetik-koerperpflege", parentSlug: "non-food" })).toBe(8.1);
+    expect(suggestVatRate({ slug: "haushalt", parentSlug: "non-food" })).toBe(8.1);
+    expect(suggestVatRate({ slug: "oele-essig", parentSlug: "saucen-wuerzen" })).toBe(2.6);
+  });
+
+  it("keys on the slug, so renaming a category does not change the rate", () => {
+    expect(suggestVatRate({ ...alkohol, name: "Bier & Wein" })).toBe(8.1);
+    expect(suggestVatRate({ ...reis, name: "Alkohol", parentName: "Non-Food" })).toBe(2.6);
+  });
+
+  it("lets a sub-category the tree does not know inherit from its parent", () => {
+    expect(suggestVatRate({ slug: "raeucherstaebchen", parentSlug: "non-food" })).toBe(8.1);
+    expect(suggestVatRate({ slug: "neu", parentSlug: "nudeln-reis" })).toBe(2.6);
+  });
+
   it("defaults to 2.6% otherwise", () => {
     expect(suggestVatRate(reis)).toBe(2.6);
   });
 
   it("defaults to 2.6% when no category is selected yet", () => {
     expect(suggestVatRate(undefined)).toBe(2.6);
+  });
+});
+
+describe("vatAfterCategoryChange", () => {
+  it("follows the category while the rate was not picked by hand", () => {
+    expect(vatAfterCategoryChange(2.6, false, alkohol)).toEqual({ vatRate: 8.1, suggested: null });
+    expect(vatAfterCategoryChange(8.1, false, reis)).toEqual({ vatRate: 2.6, suggested: null });
+  });
+
+  it("keeps a hand-picked 8.1% when the category changes, and offers the suggestion as a hint", () => {
+    expect(vatAfterCategoryChange(8.1, true, reis)).toEqual({ vatRate: 8.1, suggested: 2.6 });
+  });
+
+  it("shows no hint when the hand-picked rate already matches", () => {
+    expect(vatAfterCategoryChange(8.1, true, kuechenutensilien)).toEqual({ vatRate: 8.1, suggested: null });
+  });
+});
+
+describe("VAT_OPTIONS", () => {
+  it("offers exactly the two Swiss rates, with a reason in the label", () => {
+    expect(VAT_OPTIONS.map((o) => o.rate)).toEqual([...VAT_RATES]);
+    expect(VAT_OPTIONS.map((o) => o.label)).toEqual(["2.6 % (Lebensmittel)", "8.1 % (Alkohol, Haushalt, Kosmetik)"]);
   });
 });
 
@@ -182,16 +228,13 @@ describe("productSummaryToFormValues", () => {
 });
 
 describe("buildQuickCaptureInput", () => {
-  const reis: CategoryOption = { id: "cat-reis", name: "Reis", parentName: "Nudeln & Reis" };
-  const alkohol: CategoryOption = { id: "cat-alk", name: "Alkohol", parentName: "Getränke" };
-
   it("fills only the schema-required fields, defaulting unitType/storageType", () => {
     const input = buildQuickCaptureInput({
       ean: "3017620422003",
       nameDe: "Testartikel",
       categoryId: "cat-reis",
       priceRappen: 500,
-      category: reis,
+      vatRate: 2.6,
       dataSource: "manual",
     });
     expect(input.unitType).toBe("piece");
@@ -203,28 +246,17 @@ describe("buildQuickCaptureInput", () => {
     expect(input.allergensConfirmed).toBe(false);
   });
 
-  it("still auto-suggests the correct VAT rate from the category", () => {
+  it("saves the rate shown on screen, even when it differs from the category's suggestion", () => {
+    // Mirin filed under a food category but set to 8.1 by hand must stay 8.1.
     const input = buildQuickCaptureInput({
       ean: null,
-      nameDe: "Bier",
-      categoryId: "cat-alk",
+      nameDe: "Mirin",
+      categoryId: "cat-reis",
       priceRappen: 1000,
-      category: alkohol,
+      vatRate: 8.1,
       dataSource: "manual",
     });
     expect(input.vatRate).toBe(8.1);
-  });
-
-  it("defaults to 2.6% when the category lookup is unavailable", () => {
-    const input = buildQuickCaptureInput({
-      ean: null,
-      nameDe: "X",
-      categoryId: "cat-reis",
-      priceRappen: 100,
-      category: undefined,
-      dataSource: "manual",
-    });
-    expect(input.vatRate).toBe(2.6);
   });
 });
 

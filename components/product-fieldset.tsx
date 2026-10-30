@@ -1,22 +1,34 @@
 "use client";
 
+import { useMemo, useState } from "react";
 import { cn } from "@/lib/utils";
 import { ALLERGEN_KEYS, ALLERGEN_LABELS } from "@/lib/allergens";
+import { allOtherCountries, COMMON_ORIGINS, isKnownCountryCode } from "@/lib/countries";
 import { inputClass } from "@/lib/input-class";
 import type { ContentUnit, StorageType, UnitType } from "@/lib/generated/prisma/client";
 import type { CategoryOption } from "@/lib/category-option";
-import { suggestVatRate, type FormValues, type NumberFieldErrors } from "@/app/scan/product-form-helpers";
+import {
+  VAT_OPTIONS,
+  vatAfterCategoryChange,
+  type FormValues,
+  type NumberFieldErrors,
+} from "@/app/scan/product-form-helpers";
 
 interface ProductFieldsetProps {
   formId: string;
   values: FormValues;
   onChange: <K extends keyof FormValues>(key: K, value: FormValues[K]) => void;
   categories: CategoryOption[];
-  /** Felder, die von OFF übernommen wurden — bekommt ein sichtbares "OFF"-Badge. Nur im /scan-Kontext relevant. */
+  /** Felder, die von OFF übernommen wurden: bekommen ein sichtbares "online"-Badge. Nur im /scan-Kontext relevant. */
   sourced?: Set<keyof FormValues>;
   autoFocusName?: boolean;
   /** Feldmeldungen aus parseFormNumbers(), erscheinen unter Preis bzw. Inhaltsmenge. */
   errors?: NumberFieldErrors;
+  /**
+   * True on the edit page: the stored rate counts as chosen, so a category change
+   * only shows a hint instead of overwriting it. New products start untouched.
+   */
+  vatTouchedInitially?: boolean;
 }
 
 /**
@@ -24,13 +36,32 @@ interface ProductFieldsetProps {
  * /scan und der Detailseite in /products/[id] — beide bearbeiten dasselbe
  * Produktschema, nur Drumherum (Speichern-Semantik, Ctrl+D, Löschen) unterscheidet sich.
  */
-export function ProductFieldset({ formId, values, onChange, categories, sourced, autoFocusName = true, errors = {} }: ProductFieldsetProps) {
+export function ProductFieldset({
+  formId,
+  values,
+  onChange,
+  categories,
+  sourced,
+  autoFocusName = true,
+  errors = {},
+  vatTouchedInitially = false,
+}: ProductFieldsetProps) {
   const sourcedFields = sourced ?? new Set<keyof FormValues>();
+  const [vatTouched, setVatTouched] = useState(vatTouchedInitially);
+  const [suggestedVat, setSuggestedVat] = useState<number | null>(null);
 
   function handleCategoryChange(categoryId: string) {
     const category = categories.find((c) => c.id === categoryId);
+    const next = vatAfterCategoryChange(values.vatRate, vatTouched, category);
     onChange("categoryId", categoryId);
-    onChange("vatRate", suggestVatRate(category));
+    onChange("vatRate", next.vatRate);
+    setSuggestedVat(next.suggested);
+  }
+
+  function handleVatChange(rate: number) {
+    setVatTouched(true);
+    setSuggestedVat(null);
+    onChange("vatRate", rate);
   }
 
   // Any change to the lists voids an earlier "geprüft" tick: the user confirms what is on screen.
@@ -72,13 +103,11 @@ export function ProductFieldset({ formId, values, onChange, categories, sourced,
           />
         </Field>
 
-        <Field label="Herkunft (ISO-2)" sourced={sourcedFields.has("originCountry")} htmlFor={`${formId}-origin`}>
-          <input
+        <Field label="Herkunftsland" sourced={sourcedFields.has("originCountry")} htmlFor={`${formId}-origin`}>
+          <CountrySelect
             id={`${formId}-origin`}
             value={values.originCountry}
-            onChange={(e) => onChange("originCountry", e.target.value.toUpperCase())}
-            maxLength={2}
-            className={cn(inputClass(), "font-numeric uppercase")}
+            onChange={(code) => onChange("originCountry", code)}
           />
         </Field>
 
@@ -102,15 +131,19 @@ export function ProductFieldset({ formId, values, onChange, categories, sourced,
         </Field>
 
         <Field label="MwSt-Satz" htmlFor={`${formId}-vat`}>
-          <select
-            id={`${formId}-vat`}
-            value={values.vatRate}
-            onChange={(e) => onChange("vatRate", Number(e.target.value))}
-            className={cn(inputClass(), "font-numeric")}
-          >
-            <option value={2.6}>2.6 %</option>
-            <option value={8.1}>8.1 %</option>
-          </select>
+          <VatSelect id={`${formId}-vat`} value={values.vatRate} onChange={handleVatChange} />
+          {suggestedVat !== null && (
+            <span className="flex items-center gap-2 text-sm text-muted-foreground">
+              Vorschlag für diese Kategorie: {suggestedVat} %
+              <button
+                type="button"
+                onClick={() => handleVatChange(suggestedVat)}
+                className="rounded-sm px-1 font-medium text-primary underline-offset-2 hover:underline"
+              >
+                Übernehmen
+              </button>
+            </span>
+          )}
         </Field>
 
         <Field label="Preis (CHF)" htmlFor={`${formId}-price`} error={errors.priceChf}>
@@ -280,7 +313,52 @@ function AllergenChips({
 
 function SourcedBadge() {
   return (
-    <span className="rounded-full bg-primary/20 px-2 py-0.5 text-[0.65rem] font-medium tracking-wide text-primary uppercase">OFF</span>
+    <span
+      title="Aus der Online-Suche übernommen. Bitte prüfen."
+      className="rounded-sm bg-primary/20 px-1.5 py-0.5 text-[0.65rem] font-medium tracking-wide text-primary"
+    >
+      online
+    </span>
+  );
+}
+
+export function VatSelect({ id, value, onChange }: { id: string; value: number; onChange: (rate: number) => void }) {
+  return (
+    <select id={id} value={value} onChange={(e) => onChange(Number(e.target.value))} className={cn(inputClass(), "font-numeric")}>
+      {VAT_OPTIONS.map((option) => (
+        <option key={option.rate} value={option.rate}>
+          {option.label}
+        </option>
+      ))}
+    </select>
+  );
+}
+
+function CountrySelect({ id, value, onChange }: { id: string; value: string; onChange: (code: string) => void }) {
+  const others = useMemo(() => allOtherCountries(), []);
+  // A free-text value saved before the dropdown existed (e.g. a typo) stays visible
+  // instead of silently turning into "Nicht angegeben".
+  const unknown = value !== "" && !isKnownCountryCode(value) ? value : null;
+
+  return (
+    <select id={id} value={value} onChange={(e) => onChange(e.target.value)} className={inputClass()}>
+      <option value="">Nicht angegeben</option>
+      {unknown && <option value={unknown}>{unknown} (bitte prüfen)</option>}
+      <optgroup label="Häufig">
+        {COMMON_ORIGINS.map((country) => (
+          <option key={country.code} value={country.code}>
+            {country.label}
+          </option>
+        ))}
+      </optgroup>
+      <optgroup label="Alle Länder">
+        {others.map((country) => (
+          <option key={country.code} value={country.code}>
+            {country.label}
+          </option>
+        ))}
+      </optgroup>
+    </select>
   );
 }
 

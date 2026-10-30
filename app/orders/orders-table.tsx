@@ -4,30 +4,7 @@ import { useRouter } from "next/navigation";
 import { useTransition } from "react";
 import { Button } from "@/components/ui/button";
 import { updateOrderStatus } from "./actions";
-
-type OrderStatus = "received" | "picked" | "ready" | "collected" | "cancelled";
-
-const NEXT_STATUS: Record<OrderStatus, OrderStatus | null> = {
-  received: "picked",
-  picked: "ready",
-  ready: null,
-  collected: null,
-  cancelled: null,
-};
-const STATUS_LABELS: Record<OrderStatus, string> = {
-  received: "Eingegangen",
-  picked: "Gepickt",
-  ready: "Bereit",
-  collected: "Abgeholt",
-  cancelled: "Storniert",
-};
-const NEXT_ACTION_LABELS: Record<OrderStatus, string> = {
-  received: "Als gepickt markieren",
-  picked: "Als bereit markieren",
-  ready: "",
-  collected: "",
-  cancelled: "",
-};
+import { NEXT_STATUS, nextActionLabel, statusLabel, type OrderStatus } from "./order-labels";
 
 interface OrderRow {
   id: string;
@@ -68,7 +45,7 @@ export function OrdersTable({ orders }: { orders: OrderRow[] }) {
             <div className="text-right">
               <p className="font-numeric font-medium">{order.totalChf}</p>
               <span className="rounded-sm bg-secondary px-2 py-0.5 text-xs text-muted-foreground">
-                {STATUS_LABELS[order.status]}
+                {statusLabel(order.status, order.fulfilmentType)}
               </span>
             </div>
           </div>
@@ -87,7 +64,7 @@ export function OrdersTable({ orders }: { orders: OrderRow[] }) {
           {NEXT_STATUS[order.status] && (
             <div>
               <Button type="button" variant="outline" size="sm" onClick={() => advance(order)}>
-                {NEXT_ACTION_LABELS[order.status]}
+                {nextActionLabel(order.status, order.fulfilmentType)}
               </Button>
             </div>
           )}

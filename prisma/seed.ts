@@ -3,83 +3,10 @@ import { PrismaPg } from "@prisma/adapter-pg";
 import { PrismaClient } from "../lib/generated/prisma/client";
 import { isValidBarcode, normalizeGtin } from "../lib/barcode";
 import { unitRuleIssues } from "../lib/unit-rules";
+import { categoryTree, type CategorySeed } from "../electron/src/category-tree";
 
 const adapter = new PrismaPg({ connectionString: process.env.DATABASE_URL });
 const prisma = new PrismaClient({ adapter });
-
-interface CategorySeed {
-  name: string;
-  slug: string;
-  sortOrder: number;
-  children?: CategorySeed[];
-}
-
-// Asia-Sortiment für einen Laden in Schaffhausen. Non-Food und Alkohol sind
-// eigene Kategorien, damit das Erfassungsformular dort 8.1% MwSt vorschlagen
-// kann — der Satz selbst hängt aber am Artikel, siehe swiss-food-compliance.
-const categoryTree: CategorySeed[] = [
-  {
-    name: "Getränke",
-    slug: "getraenke",
-    sortOrder: 10,
-    children: [
-      { name: "Softdrinks & Säfte", slug: "softdrinks-saefte", sortOrder: 10 },
-      { name: "Tee & Kaffee", slug: "tee-kaffee", sortOrder: 20 },
-      { name: "Alkohol", slug: "alkohol", sortOrder: 30 },
-    ],
-  },
-  {
-    name: "Nudeln & Reis",
-    slug: "nudeln-reis",
-    sortOrder: 20,
-    children: [
-      { name: "Instantnudeln", slug: "instantnudeln", sortOrder: 10 },
-      { name: "Reis", slug: "reis", sortOrder: 20 },
-      { name: "Frische Nudeln & Teigwaren", slug: "frische-nudeln-teigwaren", sortOrder: 30 },
-    ],
-  },
-  {
-    name: "Saucen & Würzen",
-    slug: "saucen-wuerzen",
-    sortOrder: 30,
-    children: [
-      { name: "Sojasauce & Würzsaucen", slug: "sojasauce-wuerzsaucen", sortOrder: 10 },
-      { name: "Currypasten", slug: "currypasten", sortOrder: 20 },
-      { name: "Gewürze & Pulver", slug: "gewuerze-pulver", sortOrder: 30 },
-    ],
-  },
-  {
-    name: "Tiefkühlkost",
-    slug: "tiefkuehlkost",
-    sortOrder: 40,
-    children: [
-      { name: "TK-Gemüse", slug: "tk-gemuese", sortOrder: 10 },
-      { name: "TK-Teigtaschen & Dumplings", slug: "tk-teigtaschen-dumplings", sortOrder: 20 },
-      { name: "TK-Fisch & Meeresfrüchte", slug: "tk-fisch-meeresfruechte", sortOrder: 30 },
-    ],
-  },
-  { name: "Konserven", slug: "konserven", sortOrder: 50 },
-  { name: "Snacks & Süsswaren", slug: "snacks-suesswaren", sortOrder: 60 },
-  {
-    name: "Frisch & Gekühlt",
-    slug: "frisch-gekuehlt",
-    sortOrder: 70,
-    children: [
-      { name: "Tofu & Sojaprodukte", slug: "tofu-sojaprodukte", sortOrder: 10 },
-      { name: "Kimchi & Fermentiertes", slug: "kimchi-fermentiertes", sortOrder: 20 },
-      { name: "Frisches Gemüse & Kräuter", slug: "frisches-gemuese-kraeuter", sortOrder: 30 },
-    ],
-  },
-  {
-    name: "Non-Food",
-    slug: "non-food",
-    sortOrder: 80,
-    children: [
-      { name: "Küchenutensilien", slug: "kuechenutensilien", sortOrder: 10 },
-      { name: "Geschirr & Tischkultur", slug: "geschirr-tischkultur", sortOrder: 20 },
-    ],
-  },
-];
 
 async function seedCategories(nodes: CategorySeed[], parentId: string | null): Promise<Map<string, string>> {
   const idBySlug = new Map<string, string>();

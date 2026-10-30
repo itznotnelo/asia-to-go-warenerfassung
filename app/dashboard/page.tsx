@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { prisma } from "@/lib/prisma";
 import { getCategories } from "@/app/scan/actions";
-import { buildCategoryCounts, computeOffHitRate } from "./stats";
+import { buildCategoryCounts, computeOffHitRate, countIncomplete, WORK_QUEUE_LIMIT } from "./stats";
 
 // Zeigt live Fortschritt aus der DB — darf nie zur Build-Zeit eingefroren
 // werden (und die Build-Umgebung hat ohnehin keine DB-Verbindung).
@@ -17,9 +17,11 @@ export default async function DashboardPage() {
     prisma.product.findMany({
       where: { dataComplete: false },
       orderBy: { updatedAt: "desc" },
-      take: 100,
+      take: WORK_QUEUE_LIMIT,
     }),
   ]);
+  // The list is capped, the heading is not: count from the totals, not the list length.
+  const incompleteCount = countIncomplete(totalCount, completeCount);
 
   const scanCounts = { existing_product: 0, off_hit: 0, off_miss: 0 };
   for (const group of scanLogGroups) {
@@ -38,7 +40,7 @@ export default async function DashboardPage() {
       <div className="grid grid-cols-3 gap-4">
         <StatCard label="Artikel erfasst" value={String(totalCount)} />
         <StatCard label="Vollständig" value={`${completeCount} / ${totalCount}`} />
-        <StatCard label="OFF-Trefferquote" value={offHitRate === null ? "—" : `${Math.round(offHitRate * 100)} %`} />
+        <StatCard label="Online gefunden" value={offHitRate === null ? "—" : `${Math.round(offHitRate * 100)} %`} />
       </div>
 
       <section className="flex flex-col gap-3">
@@ -58,9 +60,7 @@ export default async function DashboardPage() {
       </section>
 
       <section className="flex flex-col gap-3">
-        <h2 className="text-sm font-medium text-muted-foreground">
-          Arbeitsvorrat — unvollständige Artikel ({incompleteProducts.length})
-        </h2>
+        <h2 className="text-sm font-medium text-muted-foreground">Noch unvollständig ({incompleteCount})</h2>
         <div className="flex flex-col gap-1 rounded-xl border border-border bg-card p-4">
           {incompleteProducts.length === 0 && <p className="text-sm text-muted-foreground">Alle Artikel sind vollständig.</p>}
           {incompleteProducts.map((product) => (
@@ -77,6 +77,15 @@ export default async function DashboardPage() {
             </Link>
           ))}
         </div>
+        {incompleteCount > incompleteProducts.length && (
+          <p className="text-sm text-muted-foreground">
+            Die {WORK_QUEUE_LIMIT} zuletzt bearbeiteten. Alle unter{" "}
+            <Link href="/products" className="underline underline-offset-2 hover:text-foreground">
+              Artikel
+            </Link>
+            .
+          </p>
+        )}
       </section>
     </div>
   );

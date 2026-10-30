@@ -104,7 +104,15 @@ export function ProductEditForm({ product, categories }: { product: ProductSumma
         <input value={ean} onChange={(e) => setEan(e.target.value)} className={inputClass() + " font-numeric"} />
       </label>
 
-      <ProductFieldset formId={formId} values={values} onChange={update} categories={categories} autoFocusName={false} errors={errors} />
+      <ProductFieldset
+        formId={formId}
+        values={values}
+        onChange={update}
+        categories={categories}
+        autoFocusName={false}
+        errors={errors}
+        vatTouchedInitially
+      />
 
       <SaveErrorBox lines={saveError} />
 

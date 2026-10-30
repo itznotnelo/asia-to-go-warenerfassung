@@ -3,7 +3,7 @@ import path from "node:path";
 import log from "electron-log";
 import { startEmbeddedPostgres, RunningPostgres } from "./postgres";
 import { runMigrations } from "./migrate";
-import { seedCategoriesIfEmpty } from "./seed-categories";
+import { seedMissingCategories } from "./seed-categories";
 import { startNextServer, RunningServer } from "./server";
 import { loadConfig, saveConfig } from "./config";
 import { initAutoUpdater, installUpdateInsteadOfQuit, markBootDone } from "./updater";
@@ -521,7 +521,7 @@ async function bootFullPipeline(): Promise<void> {
       await stopBoot();
       return;
     }
-    await seedCategoriesIfEmpty(databaseUrl);
+    await seedMissingCategories(databaseUrl);
     runningServer = await startNextServer(databaseUrl, config.offContactEmail, onNextExit);
 
     mainWindow = new BrowserWindow({

@@ -8,7 +8,7 @@ interface StatusPresentation {
   animate?: "pulse" | "flash";
 }
 
-function presentStatus(state: ScanState): StatusPresentation {
+export function presentStatus(state: ScanState): StatusPresentation {
   switch (state.status) {
     case "idle":
       return {
@@ -32,21 +32,21 @@ function presentStatus(state: ScanState): StatusPresentation {
       };
     case "new-hit":
       return {
-        label: "Neuer Artikel — Open Food Facts Treffer",
+        label: "Neuer Artikel: online gefunden",
         detail: state.ean,
         className: "bg-primary text-primary-foreground",
         animate: "flash",
       };
     case "new-miss":
       return {
-        label: "Neuer Artikel — kein OFF-Treffer",
+        label: "Neuer Artikel: nicht online gefunden",
         detail: state.ean,
         className: "bg-secondary text-foreground",
       };
     case "off-error":
       return {
-        label: "Open Food Facts nicht erreichbar",
-        detail: `${state.ean} — manuell erfassen`,
+        label: "Online-Suche geht gerade nicht",
+        detail: `${state.ean}: bitte von Hand erfassen`,
         className: "bg-destructive text-destructive-foreground",
         animate: "flash",
       };

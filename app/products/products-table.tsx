@@ -15,7 +15,7 @@ import { SaveErrorBox } from "@/components/save-error-box";
 import { saveErrorLines, settle, type SaveFailure } from "@/lib/save-error";
 
 const STORAGE_LABELS: Record<string, string> = { ambient: "Trocken", chilled: "Gekühlt", frozen: "Tiefgekühlt" };
-const SOURCE_LABELS: Record<string, string> = { openfoodfacts: "OFF", manual: "Manuell", ai_extracted: "KI" };
+const SOURCE_LABELS: Record<string, string> = { openfoodfacts: "Online", manual: "Manuell", ai_extracted: "KI" };
 
 interface ProductsTableProps {
   products: ProductSummary[];

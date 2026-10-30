@@ -5,6 +5,7 @@ import type { ProductSummary } from "@/lib/product-summary";
 import type { CategoryOption } from "@/lib/category-option";
 import type { ProductInput as SaveProductInput } from "@/lib/product-schema";
 import { CONTENT_AMOUNT_ERROR, parseChfToRappen, parseContentAmount, PRICE_ERROR } from "@/lib/pricing";
+import { VAT_RATE_BY_SLUG } from "@/electron/src/category-tree";
 
 export interface FormValues {
   nameDe: string;
@@ -128,25 +129,49 @@ export function parseFormNumbers(values: Pick<FormValues, "priceChf" | "contentA
   return { ok: true, priceRappen, contentAmount };
 }
 
-// "Alkohol" und alles unter "Non-Food" sind die einzigen Kategorien mit dem erhöhten Satz, siehe swiss-food-compliance.
-export function suggestVatRate(category: CategoryOption | undefined): number {
+/** Option labels for every MwSt select, so Papa sees why without reading rules. */
+export const VAT_OPTIONS: readonly { rate: number; label: string }[] = [
+  { rate: 2.6, label: "2.6 % (Lebensmittel)" },
+  { rate: 8.1, label: "8.1 % (Alkohol, Haushalt, Kosmetik)" },
+];
+
+// Keyed on the slug, not the display name, so renaming a category can't flip the rate.
+// A sub-category the tree doesn't know (added later) inherits from its parent.
+export function suggestVatRate(category: Pick<CategoryOption, "slug" | "parentSlug"> | undefined): number {
   if (!category) return 2.6;
-  if (category.name === "Alkohol" || category.parentName === "Non-Food") return 8.1;
-  return 2.6;
+  const own = VAT_RATE_BY_SLUG.get(category.slug);
+  const inherited = category.parentSlug ? VAT_RATE_BY_SLUG.get(category.parentSlug) : undefined;
+  return own ?? inherited ?? 2.6;
 }
 
 /**
- * Zwei-Pass-Modus: nur Scan + Kategorie + Preis (die einzigen im Schema
+ * What a category change does to the MwSt field. Until the user picks a rate by hand
+ * (vatTouched), the rate follows the category. After that it stays, and `suggested`
+ * carries the category's rate whenever it differs, for a visible hint.
+ */
+export function vatAfterCategoryChange(
+  currentRate: number,
+  vatTouched: boolean,
+  category: Pick<CategoryOption, "slug" | "parentSlug"> | undefined,
+): { vatRate: number; suggested: number | null } {
+  const suggestion = suggestVatRate(category);
+  if (!vatTouched) return { vatRate: suggestion, suggested: null };
+  return { vatRate: currentRate, suggested: suggestion === currentRate ? null : suggestion };
+}
+
+/**
+ * Zwei-Pass-Modus: nur Scan + Kategorie + Preis + MwSt (die einzigen im Schema
  * Pflichtfelder ausser den hier fest vorbelegten unitType/storageType).
  * Speichert bewusst ohne contentAmount/contentUnit/ingredientsDe/allergens —
  * der Artikel bleibt bis zur Nachbearbeitung im Arbeitsvorrat unvollständig.
+ * vatRate is the rate shown on screen, never a silent category lookup.
  */
 export function buildQuickCaptureInput(params: {
   ean: string | null;
   nameDe: string;
   categoryId: string;
   priceRappen: number;
-  category: CategoryOption | undefined;
+  vatRate: number;
   dataSource: DataSource;
 }): SaveProductInput {
   return {
@@ -154,7 +179,7 @@ export function buildQuickCaptureInput(params: {
     nameDe: params.nameDe,
     categoryId: params.categoryId,
     priceRappen: params.priceRappen,
-    vatRate: suggestVatRate(params.category),
+    vatRate: params.vatRate,
     unitType: "piece",
     storageType: "ambient",
     allergens: [],

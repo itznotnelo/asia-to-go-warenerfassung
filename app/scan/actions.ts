@@ -21,7 +21,13 @@ export async function getCategories(): Promise<CategoryOption[]> {
   return categories
     .filter((category) => category.parent !== null)
     .sort((a, b) => a.parent!.sortOrder - b.parent!.sortOrder || a.sortOrder - b.sortOrder)
-    .map((category) => ({ id: category.id, name: category.name, parentName: category.parent?.name ?? null }));
+    .map((category) => ({
+      id: category.id,
+      name: category.name,
+      parentName: category.parent?.name ?? null,
+      slug: category.slug,
+      parentSlug: category.parent?.slug ?? null,
+    }));
 }
 
 async function logScan(ean: string, result: "existing_product" | "off_hit" | "off_miss", productId: string | null) {

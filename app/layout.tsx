@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { IBM_Plex_Sans, JetBrains_Mono } from "next/font/google";
 import { Nav } from "@/components/nav";
+import { ScannerFieldGuard } from "@/components/scanner-field-guard";
 import "./globals.css";
 
 const plexSans = IBM_Plex_Sans({
@@ -25,6 +26,7 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
     <html lang="de-CH" className={`dark ${plexSans.variable} ${jetbrainsMono.variable} h-full antialiased`}>
       <body className="min-h-full flex flex-col">
         <Nav />
+        <ScannerFieldGuard />
         {children}
       </body>
     </html>

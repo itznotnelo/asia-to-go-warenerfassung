@@ -3,7 +3,7 @@ import { z } from "zod";
 import type { Prisma, Product } from "@/lib/generated/prisma/client";
 import { prisma } from "@/lib/prisma";
 import { toProductSummary, type ProductSummary } from "@/lib/product-summary";
-import { computeDataComplete, productInputSchema } from "@/lib/product-schema";
+import { computeDataComplete, priceRappenSchema, productInputSchema } from "@/lib/product-schema";
 import { attachOffImages, type OffImageUrls } from "@/lib/off-images";
 import { enqueueProductSync } from "@/lib/sync/outbox";
 import { triggerBackgroundDrain } from "@/lib/sync/runner";
@@ -109,7 +109,7 @@ export async function createProduct(rawInput: unknown, offImageUrls?: OffImageUr
 
 const quickUpdateSchema = z.object({
   id: z.string().min(1),
-  priceRappen: z.number().int().positive(),
+  priceRappen: priceRappenSchema,
   isAvailable: z.boolean(),
 });
 

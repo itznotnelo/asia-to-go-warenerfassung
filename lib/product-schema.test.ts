@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { computeDataComplete, isProductComplete, productInputSchema, type ProductInput } from "./product-schema";
+import { computeDataComplete, isProductComplete, MAX_PRICE_RAPPEN, productInputSchema, type ProductInput } from "./product-schema";
 
 const complete: ProductInput = {
   ean: "3017620422003",
@@ -25,6 +25,18 @@ describe("productInputSchema vatRate", () => {
     const parsed = productInputSchema.safeParse({ ...complete, vatRate });
     expect(parsed.success).toBe(false);
     expect(parsed.error?.issues[0]?.message).toBe("MwSt muss 2.6 % oder 8.1 % sein");
+  });
+});
+
+describe("productInputSchema priceRappen", () => {
+  it("accepts the CHF 10'000 cap itself", () => {
+    expect(productInputSchema.safeParse({ ...complete, priceRappen: MAX_PRICE_RAPPEN }).success).toBe(true);
+  });
+
+  it.each([MAX_PRICE_RAPPEN + 1, 1_234_567_000])("rejects %d with a German message", (priceRappen) => {
+    const parsed = productInputSchema.safeParse({ ...complete, priceRappen });
+    expect(parsed.success).toBe(false);
+    expect(parsed.error?.issues[0]?.message).toBe("Preis ist zu hoch (höchstens CHF 10'000)");
   });
 });
 

@@ -113,4 +113,11 @@ describe("applyQuickUpdate", () => {
     expect(productMock.update).toHaveBeenCalledWith({ where: { id: "p1" }, data: { priceRappen: 395, isAvailable: false } });
     expect(enqueueProductSyncMock).toHaveBeenCalledWith("p1");
   });
+
+  it("rejects a price above CHF 10'000 (a scanned EAN in the price field) before touching the DB", async () => {
+    const result = await applyQuickUpdate({ id: "p1", priceRappen: 76123456789014, isAvailable: true });
+    expect(result.ok).toBe(false);
+    expect(productMock.update).not.toHaveBeenCalled();
+    expect(enqueueProductSyncMock).not.toHaveBeenCalled();
+  });
 });

@@ -61,6 +61,7 @@ export function ExistingProductPanel({ product, categories, onSave, onCancel, sa
             autoFocus
             value={priceChf}
             onChange={(event) => setPriceChf(event.target.value)}
+            onFocus={(event) => event.target.select()}
             inputMode="decimal"
             aria-invalid={priceError !== null}
             className="font-numeric h-14 w-40 rounded-lg border border-input bg-transparent px-3 text-2xl outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50 aria-invalid:border-destructive"

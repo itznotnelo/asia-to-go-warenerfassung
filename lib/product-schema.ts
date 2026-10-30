@@ -4,6 +4,16 @@ import { VAT_RATES } from "@/lib/pricing";
 // Server actions are plain POST endpoints, so the UI <select> is not enough to keep 7.7 or 0 out.
 export const vatRateSchema = z.number().refine((rate) => VAT_RATES.includes(rate), "MwSt muss 2.6 % oder 8.1 % sein");
 
+// CHF 10'000. Far above any shop article, far below int4, and it stops a
+// scanned EAN that slipped into a price field from being saved as a price.
+export const MAX_PRICE_RAPPEN = 1_000_000;
+
+export const priceRappenSchema = z
+  .number()
+  .int()
+  .positive("Preis muss positiv sein")
+  .max(MAX_PRICE_RAPPEN, "Preis ist zu hoch (höchstens CHF 10'000)");
+
 export const productInputSchema = z.object({
   ean: z.string().trim().nullable(),
   nameDe: z.string().trim().min(1, "Name ist Pflicht"),
@@ -11,7 +21,7 @@ export const productInputSchema = z.object({
   brand: z.string().trim().optional(),
   originCountry: z.string().trim().length(2, "Bitte 2 Buchstaben eingeben, z.B. TH").optional(),
   categoryId: z.string().min(1, "Kategorie ist Pflicht"),
-  priceRappen: z.number().int().positive("Preis muss positiv sein"),
+  priceRappen: priceRappenSchema,
   vatRate: vatRateSchema,
   unitType: z.enum(["piece", "weight", "volume"]),
   contentAmount: z.number().positive("Inhaltsmenge muss grösser als 0 sein").optional(),

@@ -90,19 +90,19 @@ export function ProductsTable({ products, categories }: ProductsTableProps) {
       {selected.size > 0 && <BulkActionBar count={selected.size} categories={categories} onApply={applyBulk} disabled={false} />}
 
       <div className="overflow-x-auto rounded-xl border border-border">
-        <table className="w-full text-sm">
+        <table className="w-full text-sm" aria-label="Artikelliste">
           <thead className="bg-secondary text-left text-muted-foreground">
             <tr>
-              <th className="w-10 px-3 py-2">
-                <input type="checkbox" checked={selected.size === products.length && products.length > 0} onChange={toggleAll} />
+              <th className="w-10 px-3 py-2" scope="col">
+                <input type="checkbox" aria-label="Alle auswählen" checked={selected.size === products.length && products.length > 0} onChange={toggleAll} />
               </th>
-              <th className="px-3 py-2">Artikel</th>
-              <th className="px-3 py-2">Kategorie</th>
-              <th className="px-3 py-2">Preis</th>
-              <th className="px-3 py-2">Lagerung</th>
-              <th className="px-3 py-2">Quelle</th>
-              <th className="px-3 py-2">Status</th>
-              <th className="px-3 py-2">Verfügbar</th>
+              <th className="px-3 py-2" scope="col">Artikel</th>
+              <th className="px-3 py-2" scope="col">Kategorie</th>
+              <th className="px-3 py-2" scope="col">Preis</th>
+              <th className="px-3 py-2" scope="col">Lagerung</th>
+              <th className="px-3 py-2" scope="col">Quelle</th>
+              <th className="px-3 py-2" scope="col">Status</th>
+              <th className="px-3 py-2" scope="col">Verfügbar</th>
             </tr>
           </thead>
           <tbody>
@@ -111,7 +111,7 @@ export function ProductsTable({ products, categories }: ProductsTableProps) {
               return (
                 <tr key={product.id} className="border-t border-border hover:bg-muted/50">
                   <td className="px-3 py-2">
-                    <input type="checkbox" checked={selected.has(product.id)} onChange={() => toggleSelected(product.id)} />
+                    <input type="checkbox" aria-label={`Auswahl ${product.nameDe}`} checked={selected.has(product.id)} onChange={() => toggleSelected(product.id)} />
                   </td>
                   <td className="px-3 py-2">
                     <Link href={`/products/${product.id}`} className="hover:underline">
@@ -165,7 +165,7 @@ export function ProductsTable({ products, categories }: ProductsTableProps) {
                     </span>
                   </td>
                   <td className="px-3 py-2">
-                    <input type="checkbox" checked={product.isAvailable} onChange={() => toggleAvailability(product)} />
+                    <input type="checkbox" aria-label={`Verfügbar: ${product.nameDe}`} checked={product.isAvailable} onChange={() => toggleAvailability(product)} />
                   </td>
                 </tr>
               );

@@ -18,7 +18,7 @@ const jetbrainsMono = JetBrains_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "Asia To Go — Warenerfassung",
+  title: "Asia To Go: Warenerfassung",
   description: "Interne Erfassungs-App für den Asia-Lebensmittelladen Schaffhausen",
 };
 

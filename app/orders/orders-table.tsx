@@ -39,7 +39,7 @@ export function OrdersTable({ orders }: { orders: OrderRow[] }) {
             <div>
               <p className="font-medium">{order.customerName}</p>
               <p className="text-xs text-muted-foreground">
-                {order.customerPhone ?? "—"} · {order.fulfilmentType === "delivery" ? "Lieferung" : "Abholung"}
+                {order.customerPhone ?? "ohne Telefon"} · {order.fulfilmentType === "delivery" ? "Lieferung" : "Abholung"}
               </p>
             </div>
             <div className="text-right">

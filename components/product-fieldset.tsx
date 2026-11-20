@@ -221,7 +221,7 @@ export function ProductFieldset({
             onChange={(e) => onChange("contentUnit", e.target.value as ContentUnit | "")}
             className={inputClass()}
           >
-            <option value="">—</option>
+            <option value="">Keine Angabe</option>
             <option value="g">g</option>
             <option value="kg">kg</option>
             <option value="ml">ml</option>

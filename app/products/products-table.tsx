@@ -122,7 +122,7 @@ export function ProductsTable({ products, categories }: ProductsTableProps) {
                       {product.nameOriginal && ` · ${product.nameOriginal}`}
                     </div>
                   </td>
-                  <td className="px-3 py-2 text-muted-foreground">{category?.name ?? "—"}</td>
+                  <td className="px-3 py-2 text-muted-foreground">{category?.name ?? "ohne Kategorie"}</td>
                   <td className="font-numeric px-3 py-2">
                     {editingPriceId === product.id ? (
                       <>

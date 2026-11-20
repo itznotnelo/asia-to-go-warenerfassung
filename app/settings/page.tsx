@@ -38,7 +38,7 @@ export default async function SettingsPage() {
       <h2 className="text-lg font-semibold">Website-Abgleich</h2>
       <p className="text-sm text-muted-foreground">
         Verbindung zum Cloudflare-Backend des Online-Shops (asia-2go.ch). Die Geräte-ID und der
-        Schlüssel kommen aus dem Setup-Skript des Backends — einmal dort ausführen, dann hier
+        Schlüssel kommen aus dem Setup-Skript des Backends: einmal dort ausführen, dann hier
         eintragen.
       </p>
       <SyncPausedBox />

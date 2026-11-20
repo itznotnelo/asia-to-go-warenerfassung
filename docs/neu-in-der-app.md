@@ -31,3 +31,11 @@ Der Menüpunkt «Website-Sync» heisst jetzt «Einstellungen».
 - **Speichern:** Klappt das Speichern nicht, steht eine Meldung über den Knöpfen. Der Knopf bleibt nicht mehr auf «Speichert …» hängen.
 - **Ohne Internet:** Änderungen bleiben gespeichert, bis die Website sie bekommen hat, auch wenn das Internet lange weg ist.
 - **Mehrere Artikel ändern:** Neue MwSt oder Kategorie für viele Artikel aufs Mal kommt jetzt auch im Shop an. Als MwSt gehen nur 2.6 % und 8.1 %.
+
+## Neu: sehen, was noch fehlt
+
+- **Im Artikel** steht jetzt oben, ob er im Webshop sichtbar ist. Wenn nicht, steht dort, was noch fehlt, zum Beispiel «Foto» oder «Allergene prüfen».
+- **Unter «Fortschritt»** (hiess vorher «Dashboard») siehst du bei jedem Artikel, was fehlt. Mit «Ersten Artikel ergänzen» fängst du an, danach führt dich «Weiter mit: …» zum nächsten.
+- **Nach dem Scannen** bleibt der zuletzt gespeicherte Artikel stehen, mit dem Link «Foto und Details ergänzen».
+- **Foto neu machen:** Ein neues Foto der Vorderseite, der Zutaten oder der Nährwerte ersetzt das alte. Im Webshop erscheint nur noch das neue.
+- **Preis geändert und weitergescannt?** Die App fragt jetzt auch bei einem schon erfassten Artikel nach, bevor die Änderung verloren geht.

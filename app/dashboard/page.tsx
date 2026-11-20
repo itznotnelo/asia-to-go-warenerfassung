@@ -44,7 +44,7 @@ export default async function DashboardPage() {
       <div className="grid grid-cols-3 gap-4">
         <StatCard label="Artikel erfasst" value={String(totalCount)} />
         <StatCard label="Vollständig" value={`${completeCount} / ${totalCount}`} />
-        <StatCard label="Online gefunden" value={offHitRate === null ? "—" : `${Math.round(offHitRate * 100)} %`} />
+        <StatCard label="Online gefunden" value={offHitRate === null ? "noch keine" : `${Math.round(offHitRate * 100)} %`} />
       </div>
 
       <section className="flex flex-col gap-3">
@@ -90,7 +90,7 @@ export default async function DashboardPage() {
                 <span>
                   {product.nameDe}
                   <span className="font-numeric text-xs text-muted-foreground"> · {product.sku}</span>
-                  <span className="text-xs text-muted-foreground"> · {categoryById.get(product.categoryId)?.name ?? "—"}</span>
+                  <span className="text-xs text-muted-foreground"> · {categoryById.get(product.categoryId)?.name ?? "ohne Kategorie"}</span>
                 </span>
                 <span className="text-sm text-muted-foreground">Fehlt: {missing.join(", ")}</span>
               </Link>

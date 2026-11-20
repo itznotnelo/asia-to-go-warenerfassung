@@ -1,4 +1,5 @@
 import "server-only";
+import { randomBytes } from "node:crypto";
 import { mkdir, rm, writeFile } from "node:fs/promises";
 import path from "node:path";
 import sharp from "sharp";
@@ -22,7 +23,7 @@ export interface StoredImage {
  * daneben unter "{type}-thumb.webp"), speichert lokal unter data/images/{sku}/.
  * Wirft bei Fehlern — die Aufrufer entscheiden, wie tolerant sie sein wollen.
  */
-async function processAndStoreImageBuffer(buffer: Buffer, sku: string, type: string): Promise<StoredImage> {
+async function processAndStoreImageBuffer(buffer: Buffer, sku: string, stem: string): Promise<StoredImage> {
   const dir = path.join(IMAGE_ROOT, sku);
   await mkdir(dir, { recursive: true });
 
@@ -33,7 +34,7 @@ async function processAndStoreImageBuffer(buffer: Buffer, sku: string, type: str
     .toBuffer();
   const metadata = await sharp(webpBuffer).metadata();
 
-  const filename = `${type}.webp`;
+  const filename = `${stem}.webp`;
   await writeFile(path.join(dir, filename), webpBuffer);
 
   const thumbBuffer = await sharp(buffer)
@@ -41,7 +42,7 @@ async function processAndStoreImageBuffer(buffer: Buffer, sku: string, type: str
     .resize({ width: THUMB_EDGE, height: THUMB_EDGE, fit: "inside", withoutEnlargement: true })
     .webp({ quality: WEBP_QUALITY })
     .toBuffer();
-  await writeFile(path.join(dir, `${type}-thumb.webp`), thumbBuffer);
+  await writeFile(path.join(dir, `${stem}-thumb.webp`), thumbBuffer);
 
   return { path: `${sku}/${filename}`, width: metadata.width ?? 0, height: metadata.height ?? 0 };
 }
@@ -78,10 +79,38 @@ export async function downloadAndStoreImage(url: string, sku: string, type: stri
  */
 export async function storeUploadedImage(buffer: Buffer, sku: string, type: string): Promise<StoredImage | null> {
   try {
-    return await processAndStoreImageBuffer(buffer, sku, type);
+    // A name of its own per upload (review should: re-upload): a retaken photo never
+    // overwrites the file an older row still points to, and two "Weitere" photos
+    // no longer share one file.
+    return await processAndStoreImageBuffer(buffer, sku, uniqueImageStem(type));
   } catch (error) {
     console.error(`[images] Verarbeitung fehlgeschlagen für ${type} (${sku}):`, error);
     return null;
+  }
+}
+
+/** "{type}-{time}{random}", e.g. "front-mb3k2x9f4a1c": sorts by upload time, never repeats. */
+export function uniqueImageStem(type: string): string {
+  return `${type}-${Date.now().toString(36)}${randomBytes(3).toString("hex")}`;
+}
+
+/**
+ * Removes one stored image and its thumbnail (the files a replaced ProductImage
+ * row pointed to). Best effort like removeProductImageDir; refuses anything
+ * that is not "{sku}/{name}.webp" under IMAGE_ROOT.
+ */
+export async function removeStoredImage(relativePath: string): Promise<void> {
+  const file = path.join(IMAGE_ROOT, relativePath);
+  const parts = relativePath.split("/");
+  if (parts.length !== 2 || !parts[0] || !parts[1].endsWith(".webp") || !isPathWithinRoot(IMAGE_ROOT, file)) {
+    console.error(`[images] Bild nicht entfernt, ungültiger Pfad: ${JSON.stringify(relativePath)}`);
+    return;
+  }
+  try {
+    await rm(file, { force: true });
+    await rm(file.replace(/\.webp$/, "-thumb.webp"), { force: true });
+  } catch (error) {
+    console.error(`[images] Bild ${relativePath} konnte nicht entfernt werden:`, error);
   }
 }
 

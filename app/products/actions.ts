@@ -5,7 +5,8 @@ import { Prisma } from "@/lib/generated/prisma/client";
 import { prisma } from "@/lib/prisma";
 import { toProductSummary, type ProductSummary } from "@/lib/product-summary";
 import { allergensConfirmedAtFor, computeDataComplete, isProductComplete, updateProductSchema } from "@/lib/product-schema";
-import { storeUploadedImage } from "@/lib/images";
+import { removeStoredImage, storeUploadedImage } from "@/lib/images";
+import { imagesReplacedBy } from "@/lib/image-replace";
 import { enqueueProductSync } from "@/lib/sync/outbox";
 import { archiveProduct, purgeArchivedProduct, restoreArchivedProduct, type ArchiveResult } from "@/lib/product-archive";
 import { triggerBackgroundDrain } from "@/lib/sync/runner";
@@ -121,9 +122,22 @@ export async function uploadProductImage(formData: FormData): Promise<UploadImag
     return { ok: false, message: "Bild konnte nicht verarbeitet werden." };
   }
 
-  await prisma.productImage.create({
-    data: { productId: product.id, type, path: stored.path, width: stored.width, height: stored.height },
-  });
+  // A retaken Vorderseite/Zutaten/Nährwerte photo replaces the old row in one
+  // transaction, so the shop payload never carries both. The new row has no
+  // r2Key yet, so the next sync pass uploads it and re-publishes the article.
+  const replaced = imagesReplacedBy(
+    await prisma.productImage.findMany({ where: { productId: product.id }, select: { id: true, type: true, path: true } }),
+    type,
+  );
+  await prisma.$transaction([
+    prisma.productImage.deleteMany({ where: { id: { in: replaced.map((image) => image.id) } } }),
+    prisma.productImage.create({
+      data: { productId: product.id, type, path: stored.path, width: stored.width, height: stored.height },
+    }),
+  ]);
+  for (const image of replaced) {
+    if (image.path !== stored.path) await removeStoredImage(image.path);
+  }
 
   let dataComplete = product.dataComplete;
   if (!dataComplete) {

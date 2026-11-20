@@ -1,6 +1,8 @@
 import Link from "next/link";
 import { prisma } from "@/lib/prisma";
 import { getCategories } from "@/app/scan/actions";
+import { toProductSummary } from "@/lib/product-summary";
+import { missingForShop, missingLabels } from "@/lib/shop-readiness";
 import { buildCategoryCounts, computeOffHitRate, countIncomplete, WORK_QUEUE_LIMIT } from "./stats";
 
 // Zeigt live Fortschritt aus der DB — darf nie zur Build-Zeit eingefroren
@@ -19,6 +21,7 @@ export default async function DashboardPage() {
       where: { archivedAt: null, dataComplete: false },
       orderBy: { updatedAt: "desc" },
       take: WORK_QUEUE_LIMIT,
+      include: { _count: { select: { images: true } } },
     }),
   ]);
   // The list is capped, the heading is not: count from the totals, not the list length.
@@ -61,22 +64,38 @@ export default async function DashboardPage() {
       </section>
 
       <section className="flex flex-col gap-3">
-        <h2 className="text-sm font-medium text-muted-foreground">Noch unvollständig ({incompleteCount})</h2>
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <h2 className="text-sm font-medium text-muted-foreground">Noch nicht im Webshop ({incompleteCount})</h2>
+          {incompleteProducts[0] && (
+            <Link
+              href={`/products/${incompleteProducts[0].id}`}
+              className="inline-flex min-h-11 items-center rounded-md bg-primary px-4 text-sm font-medium text-primary-foreground hover:bg-primary/80"
+            >
+              Ersten Artikel ergänzen
+            </Link>
+          )}
+        </div>
         <div className="flex flex-col gap-1 rounded-xl border border-border bg-card p-4">
           {incompleteProducts.length === 0 && <p className="text-sm text-muted-foreground">Alle Artikel sind vollständig.</p>}
-          {incompleteProducts.map((product) => (
-            <Link
-              key={product.id}
-              href={`/products/${product.id}`}
-              className="flex items-center justify-between border-b border-border py-2 last:border-b-0 hover:bg-muted/50"
-            >
-              <span>
-                {product.nameDe}
-                <span className="font-numeric text-xs text-muted-foreground"> · {product.sku}</span>
-              </span>
-              <span className="text-xs text-muted-foreground">{categoryById.get(product.categoryId)?.name ?? "—"}</span>
-            </Link>
-          ))}
+          {incompleteProducts.map((product) => {
+            const missing = missingLabels(
+              missingForShop({ ...toProductSummary(product), kind: product.kind }, product._count.images > 0),
+            );
+            return (
+              <Link
+                key={product.id}
+                href={`/products/${product.id}`}
+                className="flex min-h-12 flex-wrap items-center justify-between gap-x-4 gap-y-1 border-b border-border py-2 last:border-b-0 hover:bg-muted/50"
+              >
+                <span>
+                  {product.nameDe}
+                  <span className="font-numeric text-xs text-muted-foreground"> · {product.sku}</span>
+                  <span className="text-xs text-muted-foreground"> · {categoryById.get(product.categoryId)?.name ?? "—"}</span>
+                </span>
+                <span className="text-sm text-muted-foreground">Fehlt: {missing.join(", ")}</span>
+              </Link>
+            );
+          })}
         </div>
         {incompleteCount > incompleteProducts.length && (
           <p className="text-sm text-muted-foreground">

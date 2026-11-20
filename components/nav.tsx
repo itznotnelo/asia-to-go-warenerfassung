@@ -8,7 +8,7 @@ const LINKS = [
   { href: "/scan", label: "Scannen" },
   { href: "/products", label: "Artikel" },
   { href: "/orders", label: "Bestellungen" },
-  { href: "/dashboard", label: "Dashboard" },
+  { href: "/dashboard", label: "Fortschritt" },
   { href: "/settings", label: "Einstellungen" },
 ];
 
@@ -26,7 +26,7 @@ export function Nav() {
             key={link.href}
             href={link.href}
             className={cn(
-              "rounded-lg px-3 py-1.5 text-sm",
+              "inline-flex min-h-11 items-center rounded-lg px-4 text-sm",
               active ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:text-foreground",
             )}
           >

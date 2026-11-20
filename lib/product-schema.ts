@@ -4,7 +4,8 @@ import { ALLERGEN_KEYS } from "@/lib/allergens";
 import { isValidBarcode, normalizeGtin } from "@/lib/barcode";
 import { nutritionSchema } from "@/lib/nutrition";
 import { unitRuleIssues, type UnitFields } from "@/lib/unit-rules";
-import { needsFoodLabelling, PRODUCT_KINDS, type ProductKind } from "@/lib/product-kind";
+import { PRODUCT_KINDS, type ProductKind } from "@/lib/product-kind";
+import { missingForShop, type ReadinessFields } from "@/lib/shop-readiness";
 
 // Server actions are plain POST endpoints, so the UI <select> is not enough to keep 7.7 or 0 out.
 export const vatRateSchema = z.number().refine((rate) => VAT_RATES.includes(rate), "MwSt muss 2.6 % oder 8.1 % sein");
@@ -69,25 +70,11 @@ export const updateProductSchema = productInputObject.extend({ id: z.string().mi
 
 export type ProductInput = z.infer<typeof productInputSchema>;
 
-interface CompletionFields {
-  nameDe: string;
-  priceRappen: number;
-  kind: ProductKind;
-  unitType: "piece" | "weight" | "volume";
-  contentAmount?: number | null;
-  contentUnit?: string | null;
-  ingredientsDe?: string | null;
-  allergensConfirmed: boolean;
-}
+type CompletionFields = ReadinessFields;
 
+// dataComplete is "nothing missing": the list itself lives in lib/shop-readiness.ts.
 function hasRequiredCompletionFields(fields: CompletionFields): boolean {
-  if (!fields.nameDe || !(fields.priceRappen > 0)) return false;
-  const hasContent = Boolean(fields.contentAmount && fields.contentUnit);
-  if (needsFoodLabelling(fields.kind)) {
-    return hasContent && Boolean(fields.ingredientsDe) && fields.allergensConfirmed;
-  }
-  // Non-food and cosmetics: no LIV labelling. Content only where a Grundpreis is due.
-  return fields.unitType === "piece" || hasContent;
+  return missingForShop(fields, true).length === 0;
 }
 
 function sameKeys(a: readonly string[], b: readonly string[]): boolean {

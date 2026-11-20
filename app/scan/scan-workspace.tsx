@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useEffect, useReducer, useRef, useState } from "react";
 import { useBarcodeScanner, type ScanResult } from "@/hooks/use-barcode-scanner";
 import { initialScanState, scanReducer } from "./scan-reducer";
@@ -31,6 +32,8 @@ export function ScanWorkspace({ categories }: { categories: CategoryOption[] }) 
   const [saving, setSaving] = useState(false);
   const [saveError, setSaveError] = useState<string[] | null>(null);
   const [lastSaved, setLastSaved] = useState<SaveProductInput | null>(null);
+  // Stays on screen after the green confirmation fades, so the way to photo and details is one click.
+  const [lastSavedProduct, setLastSavedProduct] = useState<ProductSummary | null>(null);
   const [searchOpen, setSearchOpen] = useState(false);
   const [captureMode, setCaptureMode] = useState<"full" | "quick">("full");
   const [scanHint, setScanHint] = useState<string | null>(null);
@@ -102,6 +105,7 @@ export function ScanWorkspace({ categories }: { categories: CategoryOption[] }) 
       setSaveError(saveErrorLines(result));
       return;
     }
+    setLastSavedProduct(result.product);
     dispatch({ type: "saved", message: `${result.product.nameDe} aktualisiert` });
   }
 
@@ -118,6 +122,7 @@ export function ScanWorkspace({ categories }: { categories: CategoryOption[] }) 
       return;
     }
     setLastSaved(input);
+    setLastSavedProduct(result.product);
     dispatch({ type: "saved", message: `${result.product.nameDe} gespeichert (${result.product.sku})` });
   }
 
@@ -301,6 +306,22 @@ export function ScanWorkspace({ categories }: { categories: CategoryOption[] }) 
             saveError={saveError}
           />
         ))}
+
+      {lastSavedProduct && (state.status === "idle" || state.status === "saved") && (
+        <p className="rounded-md border border-border bg-card px-4 py-3 text-sm">
+          Zuletzt gespeichert: <span className="font-medium">{lastSavedProduct.nameDe}</span>.{" "}
+          {lastSavedProduct.dataComplete ? (
+            "Vollständig."
+          ) : (
+            <>
+              Noch nicht im Webshop.{" "}
+              <Link href={`/products/${lastSavedProduct.id}`} className="font-medium underline underline-offset-2">
+                Foto und Details ergänzen
+              </Link>
+            </>
+          )}
+        </p>
+      )}
 
       <p className="text-center text-xs text-muted-foreground">Ctrl+K = Artikel suchen</p>
 

@@ -85,7 +85,7 @@ export function QuickCaptureForm({
       onKeyDown={handleKeyDown}
       className="flex flex-col gap-4 rounded-xl border border-dashed border-primary/50 bg-card p-6"
     >
-      <p className="text-sm text-muted-foreground">Schnellerfassung: Details später unter «Noch unvollständig» ergänzen.</p>
+      <p className="text-sm text-muted-foreground">Schnellerfassung: Foto und Details später unter «Fortschritt» ergänzen.</p>
       {ean && <p className="font-numeric text-sm text-muted-foreground">{ean}</p>}
 
       <div className="grid grid-cols-2 gap-4">

@@ -15,7 +15,7 @@ export function computeOffHitRate(counts: ScanResultCounts): number | null {
   return counts.off_hit / attempts;
 }
 
-/** The "Noch unvollständig" list shows at most this many rows. */
+/** The "Noch nicht im Webshop" list shows at most this many rows. */
 export const WORK_QUEUE_LIMIT = 100;
 
 /** Real number of incomplete articles, independent of the capped list. */

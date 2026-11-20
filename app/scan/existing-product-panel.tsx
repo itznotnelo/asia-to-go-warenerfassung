@@ -1,11 +1,13 @@
 "use client";
 
+import Link from "next/link";
 import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import { SaveErrorBox } from "@/components/save-error-box";
 import { formatChf, parseChfToRappen, PRICE_ERROR } from "@/lib/pricing";
 import type { CategoryOption } from "@/lib/category-option";
 import type { ProductSummary } from "@/lib/product-summary";
+import { useReportDirty } from "./use-report-dirty";
 
 interface ExistingProductPanelProps {
   product: ProductSummary;
@@ -14,14 +16,18 @@ interface ExistingProductPanelProps {
   onCancel: () => void;
   saving: boolean;
   saveError: string[] | null;
+  onDirtyChange?: (dirty: boolean) => void;
 }
 
 /** Schnellansicht für einen bereits erfassten Artikel — Preis-Korrektur und Verfügbarkeit, unter 5 Sekunden erledigt. */
-export function ExistingProductPanel({ product, categories, onSave, onCancel, saving, saveError }: ExistingProductPanelProps) {
-  const [priceChf, setPriceChf] = useState((product.priceRappen / 100).toFixed(2));
+export function ExistingProductPanel({ product, categories, onSave, onCancel, saving, saveError, onDirtyChange }: ExistingProductPanelProps) {
+  const startPrice = (product.priceRappen / 100).toFixed(2);
+  const [priceChf, setPriceChf] = useState(startPrice);
   const [isAvailable, setIsAvailable] = useState(product.isAvailable);
   const [priceError, setPriceError] = useState<string | null>(null);
   const categoryName = categories.find((c) => c.id === product.categoryId)?.name;
+  // A changed price or tick is input the next scan must not throw away (review should #29).
+  useReportDirty(priceChf !== startPrice || isAvailable !== product.isAvailable, onDirtyChange);
 
   function handleSubmit(event: React.FormEvent) {
     event.preventDefault();
@@ -85,6 +91,15 @@ export function ExistingProductPanel({ product, categories, onSave, onCancel, sa
       </div>
 
       <SaveErrorBox lines={saveError} />
+
+      {!product.dataComplete && (
+        <p className="rounded-md border border-border bg-secondary px-4 py-3 text-sm">
+          Noch nicht im Webshop: bei diesem Artikel fehlen Angaben.{" "}
+          <Link href={`/products/${product.id}`} className="font-medium underline underline-offset-2">
+            Jetzt ergänzen
+          </Link>
+        </p>
+      )}
 
       <p className="text-xs text-muted-foreground">Enter = Speichern · Esc = Abbrechen</p>
     </form>

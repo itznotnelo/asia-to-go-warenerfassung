@@ -29,7 +29,7 @@ export function ProductsTable({ products, categories }: ProductsTableProps) {
   const [priceDraft, setPriceDraft] = useState("");
   const [priceDraftError, setPriceDraftError] = useState(false);
   const [updateError, setUpdateError] = useState<string[] | null>(null);
-  const [, startTransition] = useTransition();
+  const [isPending, startTransition] = useTransition();
 
   function toggleSelected(id: string) {
     setSelected((prev) => {
@@ -87,7 +87,7 @@ export function ProductsTable({ products, categories }: ProductsTableProps) {
     <div className="flex flex-col gap-3">
       <SaveErrorBox lines={updateError} />
 
-      {selected.size > 0 && <BulkActionBar count={selected.size} categories={categories} onApply={applyBulk} disabled={false} />}
+      {selected.size > 0 && <BulkActionBar count={selected.size} categories={categories} onApply={applyBulk} disabled={isPending} />}
 
       <div className="overflow-x-auto rounded-xl border border-border">
         <table className="w-full text-sm" aria-label="Artikelliste">
@@ -138,7 +138,8 @@ export function ProductsTable({ products, categories }: ProductsTableProps) {
                             if (e.key === "Escape") setEditingPriceId(null);
                           }}
                           aria-invalid={priceDraftError}
-                          className="h-8 w-24 rounded border border-input bg-transparent px-2 aria-invalid:border-destructive"
+                          disabled={isPending}
+                          className="h-8 w-24 rounded border border-input bg-transparent px-2 aria-invalid:border-destructive disabled:opacity-50"
                         />
                         {priceDraftError && (
                           <span role="alert" className="block text-xs text-destructive">
@@ -147,7 +148,7 @@ export function ProductsTable({ products, categories }: ProductsTableProps) {
                         )}
                       </>
                     ) : (
-                      <button type="button" onClick={() => startEditPrice(product)} className="hover:underline">
+                      <button type="button" onClick={() => startEditPrice(product)} disabled={isPending} className="hover:underline disabled:opacity-50">
                         {formatChf(product.priceRappen)}
                       </button>
                     )}
@@ -165,7 +166,7 @@ export function ProductsTable({ products, categories }: ProductsTableProps) {
                     </span>
                   </td>
                   <td className="px-3 py-2">
-                    <input type="checkbox" aria-label={`Verfügbar: ${product.nameDe}`} checked={product.isAvailable} onChange={() => toggleAvailability(product)} />
+                    <input type="checkbox" aria-label={`Verfügbar: ${product.nameDe}`} checked={product.isAvailable} onChange={() => toggleAvailability(product)} disabled={isPending} />
                   </td>
                 </tr>
               );

@@ -155,9 +155,14 @@ export async function applyQuickUpdate(rawInput: unknown): Promise<SaveProductRe
     return { ok: false, message: "Bitte Eingaben prüfen." };
   }
   const { id, priceRappen, isAvailable } = parsed.data;
+  const existing = await prisma.product.findUnique({ where: { id }, select: { stockQty: true } });
+  if (!existing) return { ok: false, message: PRODUCT_NOT_FOUND };
+  // With stock tracking, shop availability follows the stock (lib/stock/availability.ts);
+  // the checkbox only applies to articles without tracking.
+  const data = existing.stockQty === null ? { priceRappen, isAvailable } : { priceRappen };
   let product: Product;
   try {
-    product = await prisma.product.update({ where: { id }, data: { priceRappen, isAvailable } });
+    product = await prisma.product.update({ where: { id }, data });
   } catch (error) {
     if (hasPrismaCode(error, "P2025")) return { ok: false, message: PRODUCT_NOT_FOUND };
     throw error;

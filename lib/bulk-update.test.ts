@@ -61,6 +61,12 @@ describe("applyBulkUpdate", () => {
     expect(triggerBackgroundDrainMock).not.toHaveBeenCalled();
   });
 
+  it("changes the availability flag only on articles without stock tracking", async () => {
+    await applyBulkUpdate({ ids: ["p1", "p2"], isAvailable: false, vatRate: 8.1 });
+    expect(productMock.updateMany).toHaveBeenCalledWith({ where: { id: { in: ["p1", "p2"] } }, data: { vatRate: 8.1 } });
+    expect(productMock.updateMany).toHaveBeenCalledWith({ where: { id: { in: ["p1", "p2"] }, stockQty: null }, data: { isAvailable: false } });
+  });
+
   it("refuses an empty patch", async () => {
     expect(await applyBulkUpdate({ ids: ["p1"] })).toEqual({ ok: false, message: "Keine Änderung ausgewählt." });
   });

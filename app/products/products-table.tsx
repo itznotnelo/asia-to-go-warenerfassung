@@ -5,6 +5,7 @@ import Link from "next/link";
 import { useState, useTransition } from "react";
 import { cn } from "@/lib/utils";
 import { formatChf, parseChfToRappen, PRICE_ERROR } from "@/lib/pricing";
+import { formatStockQty } from "@/lib/stock/units";
 import { quickUpdateProduct } from "@/app/scan/actions";
 import type { CategoryOption } from "@/lib/category-option";
 import type { ProductSummary } from "@/lib/product-summary";
@@ -102,7 +103,7 @@ export function ProductsTable({ products, categories }: ProductsTableProps) {
               <th className="px-3 py-2" scope="col">Lagerung</th>
               <th className="px-3 py-2" scope="col">Quelle</th>
               <th className="px-3 py-2" scope="col">Status</th>
-              <th className="px-3 py-2" scope="col">Verfügbar</th>
+              <th className="px-3 py-2" scope="col">Verfügbar / Bestand</th>
             </tr>
           </thead>
           <tbody>
@@ -166,7 +167,17 @@ export function ProductsTable({ products, categories }: ProductsTableProps) {
                     </span>
                   </td>
                   <td className="px-3 py-2">
-                    <input type="checkbox" aria-label={`Verfügbar: ${product.nameDe}`} checked={product.isAvailable} onChange={() => toggleAvailability(product)} disabled={isPending} />
+                    {product.stockQty != null ? (
+                      // Tracked: the webshop follows the stock, no manual switch.
+                      <span
+                        title="Bestand wird geführt: im Webshop sichtbar, solange genug da ist"
+                        className={cn("font-numeric text-xs", product.stockQty < 0 ? "text-destructive" : product.isAvailable ? "text-foreground" : "text-muted-foreground")}
+                      >
+                        {formatStockQty(product.stockQty, product.unitType)}
+                      </span>
+                    ) : (
+                      <input type="checkbox" aria-label={`Verfügbar: ${product.nameDe}`} checked={product.isAvailable} onChange={() => toggleAvailability(product)} disabled={isPending} />
+                    )}
                   </td>
                 </tr>
               );

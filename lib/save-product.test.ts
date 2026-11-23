@@ -252,6 +252,10 @@ describe("formatSku", () => {
 });
 
 describe("applyQuickUpdate", () => {
+  beforeEach(() => {
+    productMock.findUnique.mockResolvedValue({ stockQty: null });
+  });
+
   it("answers 'Artikel nicht gefunden' when the product was deleted meanwhile", async () => {
     productMock.update.mockRejectedValue(prismaError("P2025"));
     await expect(applyQuickUpdate({ id: "gone", priceRappen: 350, isAvailable: true })).resolves.toEqual({ ok: false, message: PRODUCT_NOT_FOUND });
@@ -264,6 +268,19 @@ describe("applyQuickUpdate", () => {
     expect(result.ok).toBe(true);
     expect(productMock.update).toHaveBeenCalledWith({ where: { id: "p1" }, data: { priceRappen: 395, isAvailable: false } });
     expect(enqueueProductSyncMock).toHaveBeenCalledWith("p1");
+  });
+
+  it("answers 'Artikel nicht gefunden' without writing when the product is gone before the update", async () => {
+    productMock.findUnique.mockResolvedValue(null);
+    await expect(applyQuickUpdate({ id: "gone", priceRappen: 350, isAvailable: true })).resolves.toEqual({ ok: false, message: PRODUCT_NOT_FOUND });
+    expect(productMock.update).not.toHaveBeenCalled();
+  });
+
+  it("keeps the stock-derived availability of a tracked article and only changes the price", async () => {
+    productMock.findUnique.mockResolvedValue({ stockQty: 12 });
+    productMock.update.mockResolvedValue(savedRow("ASIA-00041"));
+    await applyQuickUpdate({ id: "p1", priceRappen: 395, isAvailable: false });
+    expect(productMock.update).toHaveBeenCalledWith({ where: { id: "p1" }, data: { priceRappen: 395 } });
   });
 
   it("rejects a price above CHF 10'000 (a scanned EAN in the price field) before touching the DB", async () => {

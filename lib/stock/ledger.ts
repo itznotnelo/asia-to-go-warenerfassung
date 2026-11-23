@@ -2,7 +2,7 @@ import "server-only";
 import type { Prisma, StockMovement } from "@/lib/generated/prisma/client";
 import { enqueueProductSync } from "@/lib/sync/outbox";
 import { DEFAULT_SHOP_SAFETY_BUFFER, derivedAvailability } from "./availability";
-import { canUndoType, checkMovementQuantity, movementTypeLabel, type StockMovementType, type WasteReason } from "./movement-rules";
+import { canUndoType, checkMovementQuantity, type StockMovementType, type WasteReason } from "./movement-rules";
 
 // The stock ledger. Every stock change goes through bookMovement() inside a
 // transaction: lock the product row, append one StockMovement, write the new
@@ -127,7 +127,7 @@ export async function bookMovement(db: StockDb, input: MovementInput, buffer: nu
 }
 
 /** Books the opposite of a movement (same type, same links), pointing at it via reversesId. */
-export async function reverseMovement(db: StockDb, original: StockMovement, buffer: number, note: string): Promise<BookedMovement> {
+export async function reverseMovement(db: StockDb, original: StockMovement, buffer: number, note: string | null): Promise<BookedMovement> {
   return bookMovement(
     db,
     {
@@ -169,7 +169,8 @@ export async function undoMovement(db: StockDb, movementId: string, buffer: numb
   if (newest?.id !== movement.id) {
     throw new StockError("Nur die letzte Buchung dieses Artikels kann rückgängig gemacht werden.");
   }
-  return reverseMovement(db, movement, buffer, `Rückgängig: ${movementTypeLabel(movement.type)}`);
+  // The row itself says "(rückgängig)"; a note would only repeat it.
+  return reverseMovement(db, movement, buffer, null);
 }
 
 /**

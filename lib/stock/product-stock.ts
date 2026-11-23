@@ -2,7 +2,7 @@ import "server-only";
 import { prisma } from "@/lib/prisma";
 import { normalizeGtin } from "@/lib/barcode";
 import { bookMovement, ledgerSum, setStockTracking, StockError, undoMovement, type StockDb } from "./ledger";
-import { allocateStockToLots } from "./lots";
+import { allocateStockToLots, type AllocatedLot } from "./lots";
 import { movementIdSchema, productMovementSchema, productStockSettingsSchema, writeOffLotSchema } from "./schemas";
 import { runStockTx, type StockResult } from "./run";
 import type { StockUnitType } from "./units";
@@ -161,19 +161,23 @@ export async function writeOffLot(rawInput: unknown): Promise<StockResult<{ quan
   });
 }
 
-/** Remaining quantity per lot of one product (FEFO attribution, lib/stock/lots.ts). */
-export async function lotRemaining(db: StockDb, productId: string): Promise<Map<string, number>> {
+/** Lots of one product in FEFO order with the stock attributed to each (lib/stock/lots.ts). */
+export async function lotAllocation(db: StockDb, productId: string): Promise<AllocatedLot[]> {
   const [stock, lots, sums] = await Promise.all([
     stockNow(db, productId),
     db.stockLot.findMany({ where: { productId }, select: { id: true, expiryDate: true, receivedAt: true } }),
     db.stockMovement.groupBy({ by: ["lotId"], where: { productId, lotId: { not: null } }, _sum: { quantity: true } }),
   ]);
   const own = new Map(sums.map((row) => [row.lotId as string, row._sum.quantity ?? 0]));
-  const allocated = allocateStockToLots(
+  return allocateStockToLots(
     stock,
     lots.map((lot) => ({ ...lot, ownQty: own.get(lot.id) ?? 0 })),
   );
-  return new Map(allocated.map((lot) => [lot.id, lot.remaining]));
+}
+
+/** Remaining quantity per lot of one product. */
+export async function lotRemaining(db: StockDb, productId: string): Promise<Map<string, number>> {
+  return new Map((await lotAllocation(db, productId)).map((lot) => [lot.id, lot.remaining]));
 }
 
 export async function undoStockMovement(rawInput: unknown): Promise<StockResult<{ productId: string }>> {

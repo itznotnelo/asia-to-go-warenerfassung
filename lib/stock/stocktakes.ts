@@ -34,8 +34,8 @@ export async function countStocktakeLine(rawInput: unknown): Promise<StockResult
     const expectedQty = product.stockQty ?? (await ledgerSum(tx, productId));
     const existing = await tx.stocktakeLine.findUnique({ where: { stocktakeId_productId: { stocktakeId, productId } } });
     const countedQty = mode === "add" ? (existing?.countedQty ?? 0) + quantity : quantity;
-    // A recount keeps the expectation of the first count only if nothing
-    // moved since; otherwise the newest snapshot belongs to the newest count.
+    // The expectation is re-snapshotted with every count of this line, so
+    // the newest count is compared with the stock at that moment.
     await tx.stocktakeLine.upsert({
       where: { stocktakeId_productId: { stocktakeId, productId } },
       create: { stocktakeId, productId, countedQty, expectedQty, countedAt: new Date() },

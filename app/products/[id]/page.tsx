@@ -50,6 +50,7 @@ export default async function ProductDetailPage({ params }: { params: Promise<{ 
         isAvailable={product.isAvailable}
         archived={product.archivedAt !== null}
         nextIncomplete={nextIncomplete}
+        stockTracked={product.stockQty !== null}
       />
 
       {product.archivedAt && (

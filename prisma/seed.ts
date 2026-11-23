@@ -319,8 +319,10 @@ async function seedStock() {
     let tick = 0;
     for (const lot of seed.lots) {
       const expiryDate = lot.expiresInDays === null ? null : new Date(today.getTime() + lot.expiresInDays * DAY_MS);
+      // Whole cartons where the lot divides evenly, single pieces otherwise.
+      const packSize = lot.qty % seed.packSize === 0 ? seed.packSize : 1;
       await prisma.goodsReceiptLine.create({
-        data: { receiptId: receipt.id, productId: product.id, packs: lot.qty / seed.packSize >= 1 && lot.qty % seed.packSize === 0 ? lot.qty / seed.packSize : lot.qty, packSize: lot.qty % seed.packSize === 0 ? seed.packSize : 1, quantity: lot.qty, unitCostRappen: seed.costRappen, expiryDate, batchCode: lot.batch ?? null, createdAt: receivedAt },
+        data: { receiptId: receipt.id, productId: product.id, packs: lot.qty / packSize, packSize, quantity: lot.qty, unitCostRappen: seed.costRappen, expiryDate, batchCode: lot.batch ?? null, createdAt: receivedAt },
       });
       const stockLot = await prisma.stockLot.create({
         data: { productId: product.id, supplierId, expiryDate, batchCode: lot.batch ?? null, receivedAt },

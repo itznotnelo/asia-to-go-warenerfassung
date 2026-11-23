@@ -170,6 +170,16 @@ describe.skipIf(!canRun)("stock ledger on Postgres", () => {
     expect(await stockOf(product.id)).toEqual({ stockQty: null, ledger: 0, isAvailable: false });
   });
 
+  it("turns tracking off (stock null, flag kept) and back on (stock = ledger sum)", async () => {
+    const product = await makeProduct({ stockQty: 0 });
+    ok(await productStock.bookProductMovement({ kind: "manual", productId: product.id, quantity: 7, note: "Start" }));
+    const settings = { productId: product.id, minStock: null, reorderQty: null, packSize: 1, purchasePriceRappen: null, defaultSupplierId: null };
+    ok(await productStock.saveProductStockSettings({ ...settings, tracked: false }));
+    expect(await stockOf(product.id)).toEqual({ stockQty: null, ledger: 7, isAvailable: true });
+    ok(await productStock.saveProductStockSettings({ ...settings, tracked: true }));
+    await expectConsistent(product.id, 7);
+  });
+
   it("undoes only the newest movement, by booking a reversal", async () => {
     const product = await makeProduct({ stockQty: 0 });
     ok(await productStock.bookProductMovement({ kind: "manual", productId: product.id, quantity: 10, note: "Start" }));

@@ -8,10 +8,12 @@ interface ShopReadinessBoxProps {
   archived: boolean;
   /** Next article that still needs data, so finishing one leads straight to the next. */
   nextIncomplete?: { id: string; nameDe: string } | null;
+  /** Stock is tracked: availability follows the stock, there is no checkbox to tick. */
+  stockTracked?: boolean;
 }
 
 /** Says in plain words whether the webshop shows this article, and what is still to do. */
-export function ShopReadinessBox({ missing, isAvailable, archived, nextIncomplete }: ShopReadinessBoxProps) {
+export function ShopReadinessBox({ missing, isAvailable, archived, nextIncomplete, stockTracked = false }: ShopReadinessBoxProps) {
   const state = shopState({ missingCount: missing.length, isAvailable, archived });
   if (state === "archived") return null;
 
@@ -36,9 +38,12 @@ export function ShopReadinessBox({ missing, isAvailable, archived, nextIncomplet
         </>
       )}
 
-      {state === "hidden-unavailable" && (
-        <p className="text-sm">Unten «Verfügbar» ankreuzen und speichern, dann erscheint der Artikel im Webshop.</p>
-      )}
+      {state === "hidden-unavailable" &&
+        (stockTracked ? (
+          <p className="text-sm">Zu wenig Bestand. Der Artikel erscheint wieder, sobald genug da ist (Lieferung einbuchen oder Bestand korrigieren).</p>
+        ) : (
+          <p className="text-sm">Unten «Verfügbar» ankreuzen und speichern, dann erscheint der Artikel im Webshop.</p>
+        ))}
 
       {state !== "incomplete" && nextIncomplete && (
         <Link

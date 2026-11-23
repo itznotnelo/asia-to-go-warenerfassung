@@ -1,3 +1,4 @@
+import { needsFoodLabelling, type ProductKind } from "@/lib/product-kind";
 import type { PublishCategoryPayload, PublishOp, PublishProductPayload } from "./types";
 
 export interface CategoryForSync {
@@ -30,25 +31,64 @@ export interface ProductForSync {
   categoryId: string;
   priceRappen: number;
   vatRate: number;
+  kind: ProductKind;
   unitType: string;
   contentAmount: number | null;
   contentUnit: string | null;
   storageType: string;
   ingredientsDe: string | null;
   allergens: string[];
+  allergensConfirmedAt: Date | null;
   nutrition: unknown;
   isAvailable: boolean;
   stockQty: number | null;
   dataComplete: boolean;
   notes: string | null;
+  /** Soft-deleted (review should #34). Optional so rows/fixtures from before the column stay valid. */
+  archivedAt?: Date | null;
   updatedAt: Date;
+}
+
+interface DecimalLike {
+  toNumber(): number;
+}
+
+/** A product row as Prisma returns it: vatRate/contentAmount are Prisma.Decimal, not number. */
+export type ProductRowForSync = Omit<ProductForSync, "vatRate" | "contentAmount"> & {
+  vatRate: DecimalLike | number;
+  contentAmount: DecimalLike | number | null;
+};
+
+function toNumber(value: DecimalLike | number): number {
+  return typeof value === "number" ? value : value.toNumber();
+}
+
+/**
+ * Prisma.Decimal serialises to a JSON string ("2.6"), but the publish contract
+ * (types.ts) says number. Convert explicitly instead of casting the row.
+ */
+export function toProductForSync(row: ProductRowForSync): ProductForSync {
+  return {
+    ...row,
+    vatRate: toNumber(row.vatRate),
+    contentAmount: row.contentAmount === null ? null : toNumber(row.contentAmount),
+  };
 }
 
 // Mirrors the backend's own publish rule (atg-shop-backend, src/routes/catalogue.js:
 // `WHERE is_available = 1 AND data_complete = 1`) - a product that doesn't meet
-// this belongs out of the shop, not in as an incomplete row.
-export function isEligibleForShop(product: Pick<ProductForSync, "dataComplete" | "isAvailable">): boolean {
-  return product.dataComplete && product.isAvailable;
+// this belongs out of the shop, not in as an incomplete row. Allergens must be
+// user-confirmed too (hard rule 5): checked here as well as in dataComplete, so
+// rows saved before the confirmation flag existed drop out of the shop
+// without a data migration. Non-food and cosmetics carry no allergen
+// declaration, so for them the confirmation is not asked (#27). An archived
+// ("gelöschter") product is never eligible, so any re-queue during or after
+// its grace period stays a delete.
+export function isEligibleForShop(
+  product: Pick<ProductForSync, "dataComplete" | "isAvailable" | "allergensConfirmedAt" | "kind" | "archivedAt">,
+): boolean {
+  const allergensOk = !needsFoodLabelling(product.kind) || product.allergensConfirmedAt !== null;
+  return product.dataComplete && product.isAvailable && allergensOk && !product.archivedAt;
 }
 
 /** Only images already pushed to R2 (r2Key set) can go into a publish payload. */
@@ -99,9 +139,8 @@ export function buildProductOp(product: ProductForSync, images: ImageForSync[]):
     allergens: product.allergens,
     nutrition: product.nutrition ?? null,
     isAvailable: product.isAvailable,
-    stockQty: product.stockQty,
+    // notes and stockQty stay on the device (review should #37, see types.ts).
     dataComplete: product.dataComplete,
-    notes: product.notes,
     updatedAt: product.updatedAt.toISOString(),
     images: imagesReadyForSync(images).map((image) => ({
       id: image.id,

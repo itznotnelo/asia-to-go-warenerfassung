@@ -4,6 +4,12 @@ import path from "node:path";
 
 interface AppConfig {
   offContactEmail?: string;
+  // Second backup copy (USB stick / Nextcloud folder), chosen once in
+  // Einstellungen (files' UX 1.5). Unset = local backups only.
+  backupCopyFolder?: string;
+  // Set by a restore (files' UX R4a): the background sync poll stays off until
+  // "Artikel neu an die Website senden". Never cleared by itself.
+  syncPausedAfterRestore?: string;
 }
 
 function configPath(): string {

@@ -8,7 +8,8 @@ export const dynamic = "force-dynamic";
 
 export default async function OrdersPage() {
   const orders = await prisma.shopOrder.findMany({
-    where: { status: { not: "ready" } },
+    // Open = still to pick or prepare; ready/collected/cancelled are done.
+    where: { status: { in: ["received", "picked"] } },
     orderBy: { createdAt: "asc" },
     include: { items: true },
   });

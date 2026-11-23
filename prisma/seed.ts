@@ -1,83 +1,12 @@
 import "dotenv/config";
 import { PrismaPg } from "@prisma/adapter-pg";
 import { PrismaClient } from "../lib/generated/prisma/client";
+import { isValidBarcode, normalizeGtin } from "../lib/barcode";
+import { unitRuleIssues } from "../lib/unit-rules";
+import { categoryTree, KIND_BY_SLUG, type CategorySeed } from "../electron/src/category-tree";
 
 const adapter = new PrismaPg({ connectionString: process.env.DATABASE_URL });
 const prisma = new PrismaClient({ adapter });
-
-interface CategorySeed {
-  name: string;
-  slug: string;
-  sortOrder: number;
-  children?: CategorySeed[];
-}
-
-// Asia-Sortiment für einen Laden in Schaffhausen. Non-Food und Alkohol sind
-// eigene Kategorien, damit das Erfassungsformular dort 8.1% MwSt vorschlagen
-// kann — der Satz selbst hängt aber am Artikel, siehe swiss-food-compliance.
-const categoryTree: CategorySeed[] = [
-  {
-    name: "Getränke",
-    slug: "getraenke",
-    sortOrder: 10,
-    children: [
-      { name: "Softdrinks & Säfte", slug: "softdrinks-saefte", sortOrder: 10 },
-      { name: "Tee & Kaffee", slug: "tee-kaffee", sortOrder: 20 },
-      { name: "Alkohol", slug: "alkohol", sortOrder: 30 },
-    ],
-  },
-  {
-    name: "Nudeln & Reis",
-    slug: "nudeln-reis",
-    sortOrder: 20,
-    children: [
-      { name: "Instantnudeln", slug: "instantnudeln", sortOrder: 10 },
-      { name: "Reis", slug: "reis", sortOrder: 20 },
-      { name: "Frische Nudeln & Teigwaren", slug: "frische-nudeln-teigwaren", sortOrder: 30 },
-    ],
-  },
-  {
-    name: "Saucen & Würzen",
-    slug: "saucen-wuerzen",
-    sortOrder: 30,
-    children: [
-      { name: "Sojasauce & Würzsaucen", slug: "sojasauce-wuerzsaucen", sortOrder: 10 },
-      { name: "Currypasten", slug: "currypasten", sortOrder: 20 },
-      { name: "Gewürze & Pulver", slug: "gewuerze-pulver", sortOrder: 30 },
-    ],
-  },
-  {
-    name: "Tiefkühlkost",
-    slug: "tiefkuehlkost",
-    sortOrder: 40,
-    children: [
-      { name: "TK-Gemüse", slug: "tk-gemuese", sortOrder: 10 },
-      { name: "TK-Teigtaschen & Dumplings", slug: "tk-teigtaschen-dumplings", sortOrder: 20 },
-      { name: "TK-Fisch & Meeresfrüchte", slug: "tk-fisch-meeresfruechte", sortOrder: 30 },
-    ],
-  },
-  { name: "Konserven", slug: "konserven", sortOrder: 50 },
-  { name: "Snacks & Süsswaren", slug: "snacks-suesswaren", sortOrder: 60 },
-  {
-    name: "Frisch & Gekühlt",
-    slug: "frisch-gekuehlt",
-    sortOrder: 70,
-    children: [
-      { name: "Tofu & Sojaprodukte", slug: "tofu-sojaprodukte", sortOrder: 10 },
-      { name: "Kimchi & Fermentiertes", slug: "kimchi-fermentiertes", sortOrder: 20 },
-      { name: "Frisches Gemüse & Kräuter", slug: "frisches-gemuese-kraeuter", sortOrder: 30 },
-    ],
-  },
-  {
-    name: "Non-Food",
-    slug: "non-food",
-    sortOrder: 80,
-    children: [
-      { name: "Küchenutensilien", slug: "kuechenutensilien", sortOrder: 10 },
-      { name: "Geschirr & Tischkultur", slug: "geschirr-tischkultur", sortOrder: 20 },
-    ],
-  },
-];
 
 async function seedCategories(nodes: CategorySeed[], parentId: string | null): Promise<Map<string, string>> {
   const idBySlug = new Map<string, string>();
@@ -100,7 +29,8 @@ async function seedCategories(nodes: CategorySeed[], parentId: string | null): P
 }
 
 // Handvoll repräsentative Artikel zum Durchtesten von calcUnitPrice(),
-// MwSt-Zuordnung und den drei Lagertypen. dataComplete bleibt bewusst auf
+// MwSt-Zuordnung und den drei Lagertypen. All of them are prepacked, so
+// unitType is "piece" (see lib/unit-rules.ts). dataComplete bleibt bewusst auf
 // dem Default `false` — es fehlt jeweils mindestens ein Produktbild.
 interface ProductSeed {
   ean: string;
@@ -130,7 +60,7 @@ const products: ProductSeed[] = [
     originCountry: "CN",
     categorySlug: "sojasauce-wuerzsaucen",
     priceRappen: 495,
-    unitType: "weight",
+    unitType: "piece",
     contentAmount: 510,
     contentUnit: "g",
     storageType: "ambient",
@@ -138,7 +68,7 @@ const products: ProductSeed[] = [
     allergens: ["fish", "gluten"],
   },
   {
-    ean: "8850329654127",
+    ean: "8850329654123",
     sku: "REI-001",
     nameDe: "Jasminreis",
     nameOriginal: "ข้าวหอมมะลิ",
@@ -146,7 +76,7 @@ const products: ProductSeed[] = [
     originCountry: "TH",
     categorySlug: "reis",
     priceRappen: 1590,
-    unitType: "weight",
+    unitType: "piece",
     contentAmount: 5,
     contentUnit: "kg",
     storageType: "ambient",
@@ -154,7 +84,7 @@ const products: ProductSeed[] = [
     allergens: [],
   },
   {
-    ean: "8801043017135",
+    ean: "8801043017138",
     sku: "NUD-001",
     nameDe: "Shin Ramyun Instantnudeln, scharf, 5er-Pack",
     nameOriginal: "신라면",
@@ -178,7 +108,7 @@ const products: ProductSeed[] = [
     originCountry: "CN",
     categorySlug: "tk-teigtaschen-dumplings",
     priceRappen: 690,
-    unitType: "weight",
+    unitType: "piece",
     contentAmount: 900,
     contentUnit: "g",
     storageType: "frozen",
@@ -186,7 +116,7 @@ const products: ProductSeed[] = [
     allergens: ["gluten", "soybeans"],
   },
   {
-    ean: "8801007500128",
+    ean: "8801007500126",
     sku: "FRI-001",
     nameDe: "Kimchi, fermentiert",
     nameOriginal: "김치",
@@ -194,7 +124,7 @@ const products: ProductSeed[] = [
     originCountry: "KR",
     categorySlug: "kimchi-fermentiertes",
     priceRappen: 790,
-    unitType: "weight",
+    unitType: "piece",
     contentAmount: 500,
     contentUnit: "g",
     storageType: "chilled",
@@ -210,7 +140,7 @@ const products: ProductSeed[] = [
     originCountry: "CH",
     categorySlug: "tofu-sojaprodukte",
     priceRappen: 350,
-    unitType: "weight",
+    unitType: "piece",
     contentAmount: 400,
     contentUnit: "g",
     storageType: "chilled",
@@ -218,7 +148,7 @@ const products: ProductSeed[] = [
     allergens: ["soybeans"],
   },
   {
-    ean: "4710114128254",
+    ean: "4710114128250",
     sku: "BIE-001",
     nameDe: "Tsingtao Bier, 6er-Pack",
     nameOriginal: "青岛啤酒",
@@ -235,7 +165,7 @@ const products: ProductSeed[] = [
     allergens: ["gluten"],
   },
   {
-    ean: "6970399820133",
+    ean: "6970399820135",
     sku: "NON-001",
     nameDe: "Bambusdampfkorb, 25 cm",
     brand: "Joyce Chen",
@@ -248,17 +178,38 @@ const products: ProductSeed[] = [
   },
 ];
 
+// Runs before any write, so a typo'd seed EAN fails the whole seed instead of
+// landing half-way in the database.
+function assertValidSeedEans(seeds: ProductSeed[]) {
+  const invalid = seeds.filter((product) => !isValidBarcode(normalizeGtin(product.ean)));
+  if (invalid.length > 0) {
+    const list = invalid.map((product) => `${product.sku}=${product.ean}`).join(", ");
+    throw new Error(`Ungültige EAN (Format oder Prüfziffer) in Produkt-Seed: ${list}`);
+  }
+}
+
 async function seedProducts(idBySlug: Map<string, string>) {
+  // The seed writes past productInputSchema, so check the unit rules here.
+  for (const product of products) {
+    const issues = unitRuleIssues(product);
+    if (issues.length > 0) {
+      throw new Error(`Ungültige Einheit im Produkt-Seed ${product.sku}: ${issues.map((issue) => issue.message).join(", ")}`);
+    }
+  }
+
   for (const product of products) {
     const categoryId = idBySlug.get(product.categorySlug);
     if (!categoryId) {
       throw new Error(`Unbekannter Kategorie-Slug in Produkt-Seed: ${product.categorySlug}`);
     }
+    const ean = normalizeGtin(product.ean);
+    // Seed categories are all in the tree, so the map lookup is the whole suggestKind rule.
+    const kind = KIND_BY_SLUG.get(product.categorySlug) ?? "food";
 
     await prisma.product.upsert({
       where: { sku: product.sku },
       update: {
-        ean: product.ean,
+        ean,
         nameDe: product.nameDe,
         nameOriginal: product.nameOriginal,
         brand: product.brand,
@@ -266,6 +217,7 @@ async function seedProducts(idBySlug: Map<string, string>) {
         categoryId,
         priceRappen: product.priceRappen,
         vatRate: product.vatRate ?? 2.6,
+        kind,
         unitType: product.unitType,
         contentAmount: product.contentAmount,
         contentUnit: product.contentUnit,
@@ -275,7 +227,7 @@ async function seedProducts(idBySlug: Map<string, string>) {
         dataSource: "manual",
       },
       create: {
-        ean: product.ean,
+        ean,
         sku: product.sku,
         nameDe: product.nameDe,
         nameOriginal: product.nameOriginal,
@@ -284,6 +236,7 @@ async function seedProducts(idBySlug: Map<string, string>) {
         categoryId,
         priceRappen: product.priceRappen,
         vatRate: product.vatRate ?? 2.6,
+        kind,
         unitType: product.unitType,
         contentAmount: product.contentAmount,
         contentUnit: product.contentUnit,
@@ -297,6 +250,7 @@ async function seedProducts(idBySlug: Map<string, string>) {
 }
 
 async function main() {
+  assertValidSeedEans(products);
   const idBySlug = await seedCategories(categoryTree, null);
   await seedProducts(idBySlug);
   console.log(`Seed fertig: ${idBySlug.size} Kategorien, ${products.length} Produkte.`);

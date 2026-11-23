@@ -4,6 +4,7 @@ import { useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import type { ImageType } from "@/lib/generated/prisma/client";
+import { downscaleImage } from "@/lib/image-downscale";
 import { uploadProductImage } from "../actions";
 
 const TYPE_LABELS: Record<ImageType, string> = {
@@ -30,18 +31,24 @@ export function ImageUpload({ productId }: { productId: string }) {
     setUploadingType(type);
     setMessage(null);
 
-    const formData = new FormData();
-    formData.set("productId", productId);
-    formData.set("type", type);
-    formData.set("file", file);
+    try {
+      const formData = new FormData();
+      formData.set("productId", productId);
+      formData.set("type", type);
+      // Handyfotos auf ~1600 px verkleinern, bevor sie hochgehen (Review should #25).
+      formData.set("file", await downscaleImage(file));
 
-    const result = await uploadProductImage(formData);
-    setUploadingType(null);
-
-    if (result.ok) {
-      router.refresh();
-    } else {
-      setMessage(result.message);
+      const result = await uploadProductImage(formData);
+      if (result.ok) {
+        router.refresh();
+      } else {
+        setMessage(result.message);
+      }
+    } catch {
+      // A thrown action (e.g. body over the server limit) must not leave the button on "Lädt hoch …".
+      setMessage("Foto konnte nicht hochgeladen werden. Bitte nochmals versuchen.");
+    } finally {
+      setUploadingType(null);
     }
   }
 

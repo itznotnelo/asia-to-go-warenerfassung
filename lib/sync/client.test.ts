@@ -2,7 +2,8 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 
 vi.mock("server-only", () => ({}));
 
-const { ackOrder, fetchPendingOrders, publishOps, uploadImageToBackend } = await import("./client");
+const { ackOrder, fetchPendingOrders, IMAGE_UPLOAD_TIMEOUT_MS, publishOps, SYNC_FETCH_TIMEOUT_MS, uploadImageToBackend } =
+  await import("./client");
 
 const settings = { apiUrl: "https://atg-shop.example.workers.dev", deviceId: "shop-pc", deviceKey: "secret-key" };
 
@@ -12,6 +13,7 @@ function jsonResponse(body: unknown, ok = true, status = ok ? 200 : 500) {
 
 afterEach(() => {
   vi.unstubAllGlobals();
+  vi.restoreAllMocks();
 });
 
 describe("publishOps", () => {
@@ -35,6 +37,7 @@ describe("publishOps", () => {
     vi.stubGlobal("fetch", vi.fn().mockResolvedValue(jsonResponse({}, false, 401)));
 
     await expect(publishOps(settings, [])).rejects.toThrow("HTTP 401");
+    await expect(publishOps(settings, [])).rejects.toMatchObject({ name: "SyncHttpError", status: 401 });
   });
 
   it("strips a trailing slash from apiUrl before building the request", async () => {
@@ -44,6 +47,56 @@ describe("publishOps", () => {
     await publishOps({ ...settings, apiUrl: "https://atg-shop.example.workers.dev/" }, []);
 
     expect(fetchSpy).toHaveBeenCalledWith("https://atg-shop.example.workers.dev/publish", expect.anything());
+  });
+});
+
+describe("fetch timeouts (must 6)", () => {
+  it("gives every backend call an abort signal so a hung request can't stall the sync pass", async () => {
+    const fetchSpy = vi.fn().mockResolvedValue(jsonResponse({ items: [], r2Key: "products/prod_1/front-1.jpg" }));
+    vi.stubGlobal("fetch", fetchSpy);
+
+    await publishOps(settings, []);
+    await uploadImageToBackend(settings, "prod_1", "front", Buffer.from("x"), "image/jpeg");
+    await fetchPendingOrders(settings);
+    await ackOrder(settings, "order_1");
+
+    expect(fetchSpy).toHaveBeenCalledTimes(4);
+    for (const [, init] of fetchSpy.mock.calls) {
+      expect(init.signal).toBeInstanceOf(AbortSignal);
+    }
+  });
+
+  it("uses 15 s for API calls and the longer budget only for photo uploads", async () => {
+    // AbortSignal.timeout runs on Node-internal timers that fake timers can't drive, so check the budgets.
+    const timeoutSpy = vi.spyOn(AbortSignal, "timeout");
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(jsonResponse({ items: [], r2Key: "products/prod_1/front-1.jpg" })));
+    try {
+      await publishOps(settings, []);
+      await uploadImageToBackend(settings, "prod_1", "front", Buffer.from("x"), "image/jpeg");
+      await fetchPendingOrders(settings);
+      await ackOrder(settings, "order_1");
+
+      expect(timeoutSpy.mock.calls.map(([ms]) => ms)).toEqual([
+        SYNC_FETCH_TIMEOUT_MS,
+        IMAGE_UPLOAD_TIMEOUT_MS,
+        SYNC_FETCH_TIMEOUT_MS,
+        SYNC_FETCH_TIMEOUT_MS,
+      ]);
+    } finally {
+      timeoutSpy.mockRestore();
+    }
+  });
+
+  it("rejects when the request is aborted by its timeout signal", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (_url: string, init: RequestInit) => {
+        throw init.signal?.reason ?? new Error("no signal");
+      }),
+    );
+    vi.spyOn(AbortSignal, "timeout").mockReturnValueOnce(AbortSignal.abort(new DOMException("timed out", "TimeoutError")));
+
+    await expect(publishOps(settings, [])).rejects.toThrow("timed out");
   });
 });
 
@@ -78,6 +131,11 @@ describe("fetchPendingOrders", () => {
     vi.stubGlobal("fetch", vi.fn().mockResolvedValue(jsonResponse({}, false, 401)));
     await expect(fetchPendingOrders(settings)).rejects.toThrow("HTTP 401");
   });
+
+  it("passes a body without items through as undefined for orders.ts to reject", async () => {
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(jsonResponse(null)));
+    await expect(fetchPendingOrders(settings)).resolves.toBeUndefined();
+  });
 });
 
 describe("ackOrder", () => {
@@ -91,5 +149,14 @@ describe("ackOrder", () => {
       "https://atg-shop.example.workers.dev/orders/order_1/ack",
       expect.objectContaining({ method: "POST" }),
     );
+  });
+
+  it("encodes the order id so it cannot change the path", async () => {
+    const fetchSpy = vi.fn().mockResolvedValue(jsonResponse({ applied: true }));
+    vi.stubGlobal("fetch", fetchSpy);
+
+    await ackOrder(settings, "../admin");
+
+    expect(fetchSpy.mock.calls[0][0]).toBe("https://atg-shop.example.workers.dev/orders/..%2Fadmin/ack");
   });
 });

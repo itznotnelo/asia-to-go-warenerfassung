@@ -43,7 +43,7 @@ export function ProductsFilterBar({ categories, filters }: { categories: Categor
         <span className="text-sm text-muted-foreground">Quelle</span>
         <select name="source" defaultValue={filters.dataSource ?? ""} className={inputClass() + " w-auto"}>
           <option value="">Alle</option>
-          <option value="openfoodfacts">Open Food Facts</option>
+          <option value="openfoodfacts">Online gefunden</option>
           <option value="manual">Manuell</option>
           <option value="ai_extracted">KI-Extraktion</option>
         </select>
@@ -55,6 +55,14 @@ export function ProductsFilterBar({ categories, filters }: { categories: Categor
           <option value="">Alle</option>
           <option value="true">Vollständig</option>
           <option value="false">Unvollständig</option>
+        </select>
+      </label>
+
+      <label className="flex flex-col gap-1.5">
+        <span className="text-sm text-muted-foreground">Anzeigen</span>
+        <select name="archived" defaultValue={filters.archived ?? ""} className={inputClass() + " w-auto"}>
+          <option value="">Aktive Artikel</option>
+          <option value="true">Gelöschte Artikel</option>
         </select>
       </label>
 

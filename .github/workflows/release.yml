@@ -6,17 +6,132 @@ on:
       - "v*"
 
 permissions:
-  contents: write
+  contents: read
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
 
 jobs:
-  build-windows:
-    runs-on: windows-latest
+  # Gate for the Windows build: nothing ships to the shop PC unless tests,
+  # lint, the Electron typecheck, a real migration run against Postgres and
+  # a smoke test of the standalone server all pass first.
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    services:
+      # Same major as embedded-postgres in electron/app/package.json, which is
+      # what the shop PC actually runs.
+      postgres:
+        image: postgres:18
+        env:
+          POSTGRES_USER: asia_shop
+          POSTGRES_PASSWORD: asia_shop
+          POSTGRES_DB: asia_shop
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U asia_shop -d asia_shop"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      DATABASE_URL: postgresql://asia_shop:asia_shop@localhost:5432/asia_shop?schema=public
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
 
       # pnpm 11.20.0 (pinned via packageManager) requires Node 22.13+ — its
       # own CLI uses node:sqlite internally, which doesn't exist on Node 20.
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: 22
+
+      # electron-builder takes the installer version from electron/app, the
+      # Next app from the root package.json — both have drifted before.
+      - name: Check tag matches both package.json versions
+        env:
+          TAG: ${{ github.ref_name }}
+        run: |
+          tag="${TAG#v}"
+          root=$(node -p 'require("./package.json").version')
+          app=$(node -p 'require("./electron/app/package.json").version')
+          echo "tag $tag, package.json $root, electron/app/package.json $app"
+          if [ "$root" != "$tag" ] || [ "$app" != "$tag" ]; then
+            echo "::error::Tag $TAG does not match both package.json versions"
+            exit 1
+          fi
+
+      - name: Enable corepack (pnpm)
+        run: corepack enable
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      # electron/tsconfig.json path-maps embedded-postgres/electron-log's
+      # types to electron/app/node_modules, so tsc needs these installed.
+      - name: Install electron/app's own dependencies
+        working-directory: electron/app
+        run: npm ci
+
+      - name: Unit tests
+        run: pnpm test
+
+      - name: Lint
+        run: pnpm lint
+
+      - name: Typecheck Electron main process
+        run: pnpm exec tsc -p electron/tsconfig.json --noEmit
+
+      - name: Apply migrations to a fresh Postgres
+        run: pnpm exec prisma migrate deploy
+
+      # Exit code 2 if the migrated database differs from schema.prisma,
+      # i.e. a migration was hand-edited or one is missing.
+      - name: Check migrations match schema.prisma
+        run: pnpm exec prisma migrate diff --from-config-datasource --to-schema prisma/schema.prisma --exit-code
+
+      - name: Seed sample data
+        run: pnpm exec prisma db seed
+
+      - name: Build Next.js standalone output
+        run: pnpm build
+
+      - name: Smoke test the standalone server
+        env:
+          PORT: "3123"
+          HOSTNAME: 127.0.0.1
+        run: |
+          node .next/standalone/server.js > server.log 2>&1 &
+          for _ in $(seq 1 30); do
+            curl -fsS -o /dev/null "http://127.0.0.1:$PORT/scan" && break
+            sleep 1
+          done
+          fail=0
+          for route in / /scan /products /orders /settings /dashboard /api/export; do
+            code=$(curl -sS -L -o /dev/null -w '%{http_code}' "http://127.0.0.1:$PORT$route")
+            echo "$route -> $code"
+            [ "$code" = "200" ] || fail=1
+          done
+          if [ "$fail" != "0" ]; then
+            cat server.log
+            exit 1
+          fi
+
+  # The 'release' environment holds the publish job until a required reviewer
+  # approves it (#44). Its protection rules live in the GitHub repo settings;
+  # until the owner sets them up, GitHub creates it with no rules on first use.
+  build-windows:
+    needs: verify
+    runs-on: windows-latest
+    environment: release
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+
+      # pnpm 11.20.0 (pinned via packageManager) requires Node 22.13+ — its
+      # own CLI uses node:sqlite internally, which doesn't exist on Node 20.
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
         with:
           node-version: 22
 
@@ -49,16 +164,40 @@ jobs:
       - name: Compile Electron main process
         run: pnpm run electron:build-src
 
-      # Runs a real `prisma migrate deploy` against a throwaway embedded
-      # Postgres instance to force-download Prisma's schema-engine binary and
-      # bundle it into electron/resources/prisma-engines/ — without this, the
-      # packaged app would need internet access on a fresh end-user machine
-      # just to run its first migration. Also doubles as a migration smoke
-      # test: a broken migration fails the release build here.
+      # Downloads Prisma's schema-engine binary and bundles it into
+      # electron/resources/prisma-engines/, so the packaged app can run its
+      # first migration without internet access. No database is involved
+      # here; migrations are tested in the verify job above.
       - name: Prefetch and bundle Prisma schema-engine binary
         run: node scripts/ci-prefetch-prisma-engine.cjs
 
-      - name: Build and publish installer
+      # pg_dump/pg_restore for backups (#3060 must 10): embedded-postgres ships
+      # neither. Same major as embedded-postgres; electron-builder.config.js
+      # fails a CI build without pg_dump.exe on purpose.
+      # EDB's download page only links the newest 18.x, but this versioned URL
+      # still serves (checked 2026-10-30). Fallback if it ever 404s: 18.6-1,
+      # sha256 fbe23da234ee31547bf8a36d29dfd81e82b849df2d2b78d2eecb43d360252f8c
+      # (a newer pg_dump of the same major dumps an 18.4 server fine).
+      - name: Bundle pg_dump/pg_restore
+        shell: pwsh
+        run: |
+          $v = "18.4-1"   # bump together with embedded-postgres, and the sha256
+          $sha256 = "7effe34c0bf89027b3f171447d351cbc460f4566c8d0f643daec67f140787858"
+          $ProgressPreference = "SilentlyContinue"   # the progress bar makes a 340 MB download crawl
+          Invoke-WebRequest "https://get.enterprisedb.com/postgresql/postgresql-$v-windows-x64-binaries.zip" -OutFile pg.zip
+          $got = (Get-FileHash pg.zip -Algorithm SHA256).Hash.ToLower()
+          if ($got -ne $sha256) { throw "pg.zip sha256 mismatch: got $got, want $sha256" }
+          Expand-Archive pg.zip -DestinationPath pgzip
+          $dst = "electron/resources/pg-tools"; New-Item -ItemType Directory -Force $dst | Out-Null
+          Copy-Item pgzip/pgsql/bin/pg_dump.exe, pgzip/pgsql/bin/pg_restore.exe $dst
+          Copy-Item pgzip/pgsql/bin/*.dll $dst
+          & "$dst/pg_dump.exe" --version
+          & "$dst/pg_restore.exe" --version
+
+      # EP_DRAFT: the release stays a draft (invisible to electron-updater)
+      # until someone publishes it by hand on GitHub.
+      - name: Build and publish installer (draft)
         run: node_modules/.bin/electron-builder --config electron-builder.config.js --win nsis --publish always
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          EP_DRAFT: "true"

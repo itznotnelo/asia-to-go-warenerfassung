@@ -22,6 +22,25 @@ export function hasValidCheckDigit(value: string): boolean {
   return computedCheckDigit === checkDigit;
 }
 
-export function isValidBarcode(value: string): boolean {
+export function isValidBarcode(value: string | null | undefined): boolean {
+  if (!value) return false;
   return hasValidBarcodeFormat(value) && hasValidCheckDigit(value);
+}
+
+/**
+ * Canonical storage form, so one product can't be saved twice under two
+ * spellings of the same GTIN. UPC-A (12) gets a leading 0 to become EAN-13,
+ * a GTIN-14 with indicator 0 drops it to EAN-13. EAN-8 and GTIN-14 with an
+ * indicator 1-9 (outer case, a different trade item) stay as they are.
+ * Leading zeros don't change the GS1 check digit, so validity is preserved.
+ * Returns null for empty input or an impossible length; the check digit is
+ * not checked here, use isValidBarcode() on the result for that.
+ */
+export function normalizeGtin(value: string | null | undefined): string | null {
+  const trimmed = value?.trim();
+  if (!trimmed || !hasValidBarcodeFormat(trimmed)) return null;
+
+  if (trimmed.length === 12) return `0${trimmed}`;
+  if (trimmed.length === 14 && trimmed.startsWith("0")) return trimmed.slice(1);
+  return trimmed;
 }

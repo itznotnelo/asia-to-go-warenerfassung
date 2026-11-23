@@ -8,7 +8,7 @@ interface StatusPresentation {
   animate?: "pulse" | "flash";
 }
 
-function presentStatus(state: ScanState): StatusPresentation {
+export function presentStatus(state: ScanState): StatusPresentation {
   switch (state.status) {
     case "idle":
       return {
@@ -30,23 +30,30 @@ function presentStatus(state: ScanState): StatusPresentation {
         className: "bg-primary text-primary-foreground",
         animate: "flash",
       };
+    case "archived":
+      return {
+        label: "Artikel ist gelöscht",
+        detail: `${state.product.nameDe} · ${state.product.sku}`,
+        className: "bg-destructive text-destructive-foreground",
+        animate: "flash",
+      };
     case "new-hit":
       return {
-        label: "Neuer Artikel — Open Food Facts Treffer",
+        label: "Neuer Artikel: online gefunden",
         detail: state.ean,
         className: "bg-primary text-primary-foreground",
         animate: "flash",
       };
     case "new-miss":
       return {
-        label: "Neuer Artikel — kein OFF-Treffer",
+        label: "Neuer Artikel: nicht online gefunden",
         detail: state.ean,
         className: "bg-secondary text-foreground",
       };
     case "off-error":
       return {
-        label: "Open Food Facts nicht erreichbar",
-        detail: `${state.ean} — manuell erfassen`,
+        label: "Online-Suche geht gerade nicht",
+        detail: `${state.ean}: bitte von Hand erfassen`,
         className: "bg-destructive text-destructive-foreground",
         animate: "flash",
       };
@@ -56,6 +63,12 @@ function presentStatus(state: ScanState): StatusPresentation {
         detail: state.barcode,
         className: "bg-destructive text-destructive-foreground",
         animate: "flash",
+      };
+    case "no-barcode":
+      return {
+        label: "Neuer Artikel ohne Barcode",
+        detail: "Bekommt beim Speichern eine eigene Artikelnummer",
+        className: "bg-secondary text-foreground",
       };
     case "saved":
       return {

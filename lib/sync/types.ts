@@ -8,6 +8,26 @@ export function hasShopSyncSettings(settings: ShopSyncSettingsValue): boolean {
   return Boolean(settings.apiUrl && settings.deviceId && settings.deviceKey);
 }
 
+/**
+ * What the settings page gets: never the device key itself, only whether one
+ * is stored (review should #38). The key is the shop backend's bearer token,
+ * so it must not end up in the page's HTML/RSC payload.
+ */
+export interface ShopSyncSettingsView {
+  apiUrl: string;
+  deviceId: string;
+  hasDeviceKey: boolean;
+}
+
+export function toShopSyncSettingsView(settings: ShopSyncSettingsValue): ShopSyncSettingsView {
+  return { apiUrl: settings.apiUrl, deviceId: settings.deviceId, hasDeviceKey: settings.deviceKey !== "" };
+}
+
+/** An empty key field means "keep the stored key" - the form never has the old one to send back. */
+export function resolveDeviceKey(submitted: string, stored: string): string {
+  return submitted === "" ? stored : submitted;
+}
+
 export interface PublishCategoryPayload {
   id: string;
   name: string;
@@ -26,6 +46,11 @@ export interface PublishImagePayload {
   sourceAttribution: string | null;
 }
 
+// No `notes` ("Notiz (intern)") and no `stockQty` (no stock tracking in
+// Phase 1, and the catalogue serves it publicly): review should #37. The
+// backend stores a missing field as NULL, so a row's old values are cleared on
+// its next edit (an unchanged updatedAt is skipped as stale).
+// build-ops.test.ts pins the exact key list.
 export interface PublishProductPayload {
   id: string;
   ean: string | null;
@@ -46,9 +71,7 @@ export interface PublishProductPayload {
   allergens: string[];
   nutrition: unknown;
   isAvailable: boolean;
-  stockQty: number | null;
   dataComplete: boolean;
-  notes: string | null;
   updatedAt: string;
   images: PublishImagePayload[];
 }
@@ -57,20 +80,3 @@ export type PublishOp =
   | { op: "upsertCategory"; category: PublishCategoryPayload }
   | { op: "upsert"; product: PublishProductPayload }
   | { op: "delete"; id: string };
-
-export interface PendingOrderItem {
-  productId: string | null;
-  nameDe: string;
-  qty: number;
-}
-
-export interface PendingOrder {
-  id: string;
-  customerName: string;
-  customerPhone: string | null;
-  fulfilmentType: string;
-  totalRappen: number;
-  notes: string | null;
-  createdAt: string;
-  items: PendingOrderItem[];
-}

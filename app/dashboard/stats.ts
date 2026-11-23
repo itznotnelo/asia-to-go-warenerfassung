@@ -15,6 +15,14 @@ export function computeOffHitRate(counts: ScanResultCounts): number | null {
   return counts.off_hit / attempts;
 }
 
+/** The "Noch nicht im Webshop" list shows at most this many rows. */
+export const WORK_QUEUE_LIMIT = 100;
+
+/** Real number of incomplete articles, independent of the capped list. */
+export function countIncomplete(totalCount: number, completeCount: number): number {
+  return Math.max(0, totalCount - completeCount);
+}
+
 export interface CategoryCount {
   categoryId: string;
   categoryName: string;

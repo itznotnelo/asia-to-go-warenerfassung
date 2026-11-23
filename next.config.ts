@@ -2,6 +2,19 @@ import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
   output: "standalone",
+  // Next rejects server-action bodies over 1 MB by default, so phone photos
+  // never reached uploadProductImage (review should #25). The action itself
+  // caps the file at 10 MB (MAX_UPLOAD_BYTES); the extra 1 MB is multipart
+  // overhead, so an oversized file gets the action's German message instead
+  // of a raw Next error. image-upload.tsx downscales before sending anyway.
+  experimental: {
+    serverActions: {
+      bodySizeLimit: "11mb",
+    },
+    // Middleware (the Host/Origin guard, review should #38) buffers request
+    // bodies up to 10 MB by default and truncates the rest; keep it in step.
+    middlewareClientMaxBodySize: "11mb",
+  },
   // Next's own output tracer (@vercel/nft) keeps silently missing individual
   // packages that are technically hoisted to root node_modules but only
   // reachable via a require() it can't statically follow (next's own

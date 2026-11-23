@@ -5,21 +5,39 @@ import Link from "next/link";
 import { useId, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { ProductFieldset } from "@/components/product-fieldset";
+import { SaveErrorBox } from "@/components/save-error-box";
 import { inputClass } from "@/lib/input-class";
+import { saveErrorLines, settle } from "@/lib/save-error";
 import type { CategoryOption } from "@/lib/category-option";
 import type { ProductInput as SaveProductInput } from "@/lib/product-schema";
 import type { ProductSummary } from "@/lib/product-summary";
-import { productSummaryToFormValues, type FormValues } from "@/app/scan/product-form-helpers";
-import { deleteProduct, updateProduct } from "../actions";
+import type { ProductKind } from "@/lib/product-kind";
+import {
+  parseFormNumbers,
+  productSummaryToFormValues,
+  type FormValues,
+  type NumberFieldErrors,
+} from "@/app/scan/product-form-helpers";
+import { updateProduct } from "../actions";
 
-export function ProductEditForm({ product, categories }: { product: ProductSummary; categories: CategoryOption[] }) {
+export function ProductEditForm({
+  product,
+  kind: storedKind,
+  categories,
+}: {
+  product: ProductSummary;
+  kind: ProductKind;
+  categories: CategoryOption[];
+}) {
   const router = useRouter();
   const formId = useId();
   const [values, setValues] = useState<FormValues>(() => productSummaryToFormValues(product));
+  const [kind, setKind] = useState<ProductKind>(storedKind);
   const [ean, setEan] = useState(product.ean ?? "");
   const [saving, setSaving] = useState(false);
-  const [deleting, setDeleting] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
+  const [errors, setErrors] = useState<NumberFieldErrors>({});
+  const [saveError, setSaveError] = useState<string[] | null>(null);
 
   function update<K extends keyof FormValues>(key: K, value: FormValues[K]) {
     setValues((prev) => ({ ...prev, [key]: value }));
@@ -27,10 +45,17 @@ export function ProductEditForm({ product, categories }: { product: ProductSumma
 
   async function handleSubmit(event: React.FormEvent) {
     event.preventDefault();
-    setSaving(true);
     setMessage(null);
+    setSaveError(null);
+    const parsed = parseFormNumbers(values);
+    if (!parsed.ok) {
+      setErrors(parsed.errors);
+      return;
+    }
+    setErrors({});
+    setSaving(true);
 
-    const priceRappen = Math.round(Number.parseFloat(values.priceChf.replace(",", ".")) * 100);
+    const { priceRappen, contentAmount } = parsed;
     const input: SaveProductInput = {
       ean: ean.trim() || null,
       nameDe: values.nameDe,
@@ -40,32 +65,27 @@ export function ProductEditForm({ product, categories }: { product: ProductSumma
       categoryId: values.categoryId,
       priceRappen,
       vatRate: values.vatRate,
+      kind,
       unitType: values.unitType,
-      contentAmount: values.contentAmount ? Number.parseFloat(values.contentAmount.replace(",", ".")) : undefined,
+      contentAmount,
       contentUnit: values.contentUnit || undefined,
       storageType: values.storageType,
       ingredientsDe: values.ingredientsDe || undefined,
       allergens: values.allergens,
+      traces: values.traces,
+      allergensConfirmed: values.allergensConfirmed,
       notes: values.notes || undefined,
       dataSource: product.dataSource,
     };
 
-    const result = await updateProduct({ id: product.id, ...input });
+    const result = await settle(() => updateProduct({ id: product.id, ...input }));
     setSaving(false);
-    setMessage(result.ok ? "Gespeichert." : result.message);
-    if (result.ok) router.refresh();
-  }
-
-  async function handleDelete() {
-    if (!window.confirm(`„${product.nameDe}" wirklich löschen?`)) return;
-    setDeleting(true);
-    const result = await deleteProduct(product.id);
-    if (result.ok) {
-      router.push("/products");
-    } else {
-      setDeleting(false);
-      setMessage(result.message);
+    if (!result.ok) {
+      setSaveError(saveErrorLines(result));
+      return;
     }
+    setMessage("Gespeichert.");
+    router.refresh();
   }
 
   return (
@@ -80,15 +100,25 @@ export function ProductEditForm({ product, categories }: { product: ProductSumma
         <input value={ean} onChange={(e) => setEan(e.target.value)} className={inputClass() + " font-numeric"} />
       </label>
 
-      <ProductFieldset formId={formId} values={values} onChange={update} categories={categories} autoFocusName={false} />
+      <ProductFieldset
+        formId={formId}
+        values={values}
+        onChange={update}
+        categories={categories}
+        autoFocusName={false}
+        errors={errors}
+        vatTouchedInitially
+        kind={kind}
+        onKindChange={setKind}
+      />
+
+      <SaveErrorBox lines={saveError} />
 
       <div className="flex items-center gap-3">
         <Button type="submit" size="lg" className="h-14 px-6 text-base" disabled={saving}>
           {saving ? "Speichert …" : "Speichern"}
         </Button>
-        <Button type="button" variant="destructive" size="lg" className="h-14 px-6 text-base" disabled={deleting} onClick={handleDelete}>
-          {deleting ? "Löscht …" : "Löschen"}
-        </Button>
+        {/* Löschen sits in its own section below the form (review should #34, archive-actions.tsx). */}
         <Link href="/products" className="text-sm text-muted-foreground hover:text-foreground">
           Zurück zur Liste
         </Link>

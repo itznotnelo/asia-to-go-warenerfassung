@@ -1,16 +1,22 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-const shopOrderMock = { findUnique: vi.fn(), create: vi.fn() };
-const productMock = { findUnique: vi.fn(), update: vi.fn() };
+const txMock = {
+  shopOrder: { create: vi.fn() },
+  product: { findMany: vi.fn(), updateMany: vi.fn() },
+};
+const prismaMock = {
+  shopOrder: { findUnique: vi.fn() },
+  $transaction: vi.fn(async (fn: (tx: typeof txMock) => Promise<unknown>) => fn(txMock)),
+};
 
-vi.mock("@/lib/prisma", () => ({ prisma: { shopOrder: shopOrderMock, product: productMock } }));
+vi.mock("@/lib/prisma", () => ({ prisma: prismaMock }));
 vi.mock("server-only", () => ({}));
 
 const fetchPendingOrdersMock = vi.fn();
 const ackOrderMock = vi.fn();
 vi.mock("./client", () => ({ fetchPendingOrders: fetchPendingOrdersMock, ackOrder: ackOrderMock }));
 
-const { applyOrderToStock, importPendingOrders } = await import("./orders");
+const { importPendingOrders } = await import("./orders");
 
 const settings = { apiUrl: "https://atg-shop.example.workers.dev", deviceId: "shop-pc", deviceKey: "secret-key" };
 
@@ -22,78 +28,246 @@ function pendingOrder(overrides: Record<string, unknown> = {}) {
     fulfilmentType: "pickup",
     totalRappen: 2580,
     notes: null,
-    createdAt: "2026-10-06T00:00:00.000Z",
+    createdAt: "2026-10-06T08:15:00.000Z",
     items: [{ productId: "prod_1", nameDe: "Jasminreis 5kg", qty: 2 }],
     ...overrides,
   };
 }
 
 beforeEach(() => {
-  shopOrderMock.findUnique.mockReset();
-  shopOrderMock.create.mockReset().mockResolvedValue({});
-  productMock.findUnique.mockReset();
-  productMock.update.mockReset().mockResolvedValue({});
+  vi.spyOn(console, "error").mockImplementation(() => {});
+  prismaMock.shopOrder.findUnique.mockReset().mockResolvedValue(null);
+  prismaMock.$transaction.mockClear();
+  txMock.shopOrder.create.mockReset().mockResolvedValue({});
+  txMock.product.findMany.mockReset().mockResolvedValue([{ id: "prod_1", sku: "ASIA-00007", vatRate: 2.6 }]);
+  txMock.product.updateMany.mockReset().mockResolvedValue({ count: 1 });
   fetchPendingOrdersMock.mockReset();
   ackOrderMock.mockReset().mockResolvedValue(undefined);
-});
-
-describe("applyOrderToStock", () => {
-  it("decrements stock by the ordered qty", () => {
-    expect(applyOrderToStock(10, 2)).toBe(8);
-  });
-
-  it("floors at 0 instead of going negative", () => {
-    expect(applyOrderToStock(1, 5)).toBe(0);
-  });
-
-  it("leaves untracked stock (null) untouched", () => {
-    expect(applyOrderToStock(null, 5)).toBeNull();
-  });
 });
 
 describe("importPendingOrders", () => {
   it("skips the network call when settings are incomplete", async () => {
     const result = await importPendingOrders({ apiUrl: "", deviceId: "", deviceKey: "" });
 
-    expect(result).toEqual({ imported: 0, skippedNoSettings: true });
+    expect(result).toEqual({ imported: 0, failed: 0, failedOrderIds: [], skippedNoSettings: true });
     expect(fetchPendingOrdersMock).not.toHaveBeenCalled();
   });
 
-  it("creates the local order, decrements stock, and acks", async () => {
+  it("creates the order with its original time, decrements stock atomically with a 0 floor, then acks", async () => {
     fetchPendingOrdersMock.mockResolvedValue([pendingOrder()]);
-    shopOrderMock.findUnique.mockResolvedValue(null);
-    productMock.findUnique.mockResolvedValue({ id: "prod_1", stockQty: 10 });
 
     const result = await importPendingOrders(settings);
 
-    expect(result).toEqual({ imported: 1, skippedNoSettings: false });
-    expect(shopOrderMock.create).toHaveBeenCalledWith(
-      expect.objectContaining({ data: expect.objectContaining({ id: "order_1" }) }),
-    );
-    expect(productMock.update).toHaveBeenCalledWith({ where: { id: "prod_1" }, data: { stockQty: 8 } });
+    expect(result).toEqual({ imported: 1, failed: 0, failedOrderIds: [], skippedNoSettings: false });
+    expect(txMock.shopOrder.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        id: "order_1",
+        createdAt: new Date("2026-10-06T08:15:00.000Z"),
+        items: {
+          create: [
+            {
+              productId: "prod_1",
+              nameDe: "Jasminreis 5kg",
+              qty: 2,
+              sku: "ASIA-00007",
+              unitPriceRappen: null,
+              vatRate: 2.6,
+              lineTotalRappen: null,
+            },
+          ],
+        },
+      }),
+    });
+    expect(txMock.product.updateMany).toHaveBeenNthCalledWith(1, {
+      where: { id: "prod_1", stockQty: { not: null } },
+      data: { stockQty: { decrement: 2 } },
+    });
+    expect(txMock.product.updateMany).toHaveBeenNthCalledWith(2, {
+      where: { id: "prod_1", stockQty: { lt: 0 } },
+      data: { stockQty: 0 },
+    });
     expect(ackOrderMock).toHaveBeenCalledWith(settings, "order_1");
   });
 
-  it("re-acks without re-applying the stock decrement if the order was already imported", async () => {
+  it("re-acks without a second transaction if the order was already imported", async () => {
     fetchPendingOrdersMock.mockResolvedValue([pendingOrder()]);
-    shopOrderMock.findUnique.mockResolvedValue({ id: "order_1" });
+    prismaMock.shopOrder.findUnique.mockResolvedValue({ id: "order_1" });
 
     const result = await importPendingOrders(settings);
 
     expect(result.imported).toBe(1);
-    expect(shopOrderMock.create).not.toHaveBeenCalled();
-    expect(productMock.update).not.toHaveBeenCalled();
+    expect(prismaMock.$transaction).not.toHaveBeenCalled();
     expect(ackOrderMock).toHaveBeenCalledWith(settings, "order_1");
   });
 
-  it("skips the stock update for an item whose product was deleted locally", async () => {
-    fetchPendingOrdersMock.mockResolvedValue([pendingOrder()]);
-    shopOrderMock.findUnique.mockResolvedValue(null);
-    productMock.findUnique.mockResolvedValue(null);
+  it("imports a line for a locally deleted product with productId null and keeps nameDe", async () => {
+    fetchPendingOrdersMock.mockResolvedValue([
+      pendingOrder({
+        items: [
+          { productId: "prod_gone", nameDe: "Mama Tom Yum", qty: 3 },
+          { productId: "prod_1", nameDe: "Jasminreis 5kg", qty: 1 },
+        ],
+      }),
+    ]);
 
-    await importPendingOrders(settings);
+    const result = await importPendingOrders(settings);
 
-    expect(productMock.update).not.toHaveBeenCalled();
+    expect(result.imported).toBe(1);
+    expect(txMock.shopOrder.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        items: {
+          create: [
+            { productId: null, nameDe: "Mama Tom Yum", qty: 3, sku: null, unitPriceRappen: null, vatRate: null, lineTotalRappen: null },
+            {
+              productId: "prod_1",
+              nameDe: "Jasminreis 5kg",
+              qty: 1,
+              sku: "ASIA-00007",
+              unitPriceRappen: null,
+              vatRate: 2.6,
+              lineTotalRappen: null,
+            },
+          ],
+        },
+      }),
+    });
+    // Only the product that still exists gets a stock update.
+    for (const [call] of txMock.product.updateMany.mock.calls) {
+      expect(call.where.id).toBe("prod_1");
+    }
     expect(ackOrderMock).toHaveBeenCalledWith(settings, "order_1");
+  });
+
+  it("a failing order does not block the orders behind it", async () => {
+    fetchPendingOrdersMock.mockResolvedValue([pendingOrder({ id: "order_bad" }), pendingOrder({ id: "order_2" })]);
+    txMock.shopOrder.create.mockRejectedValueOnce(new Error("P2003 foreign key"));
+
+    const result = await importPendingOrders(settings);
+
+    expect(result).toEqual({ imported: 1, failed: 1, failedOrderIds: ["order_bad"], skippedNoSettings: false });
+    expect(ackOrderMock).toHaveBeenCalledTimes(1);
+    expect(ackOrderMock).toHaveBeenCalledWith(settings, "order_2");
+  });
+
+  it("a crash mid-import (during the stock update) is never acked, later orders still import", async () => {
+    fetchPendingOrdersMock.mockResolvedValue([pendingOrder(), pendingOrder({ id: "order_2" })]);
+    txMock.product.updateMany.mockRejectedValueOnce(new Error("connection terminated"));
+
+    const result = await importPendingOrders(settings);
+
+    // Create and the failing decrement ran on the same tx client, so Postgres
+    // rolls the order back; without an ack the backend offers it again.
+    expect(prismaMock.$transaction).toHaveBeenCalledTimes(2);
+    expect(txMock.shopOrder.create).toHaveBeenCalledTimes(2);
+    expect(ackOrderMock).not.toHaveBeenCalledWith(settings, "order_1");
+    expect(ackOrderMock).toHaveBeenCalledWith(settings, "order_2");
+    expect(result).toEqual({ imported: 1, failed: 1, failedOrderIds: ["order_1"], skippedNoSettings: false });
+  });
+
+  it("an ack failure after commit counts as failed; the retry then only re-acks", async () => {
+    fetchPendingOrdersMock.mockResolvedValue([pendingOrder()]);
+    ackOrderMock.mockRejectedValueOnce(new Error("ack order failed: HTTP 503"));
+
+    const first = await importPendingOrders(settings);
+    expect(first.failedOrderIds).toEqual(["order_1"]);
+
+    prismaMock.shopOrder.findUnique.mockResolvedValue({ id: "order_1" });
+    const second = await importPendingOrders(settings);
+    expect(second.imported).toBe(1);
+    expect(prismaMock.$transaction).toHaveBeenCalledTimes(1);
+  });
+
+  it("rejects malformed orders by schema and still imports the valid ones", async () => {
+    fetchPendingOrdersMock.mockResolvedValue([
+      pendingOrder({ id: "order_chf", totalRappen: 12.5 }),
+      pendingOrder({ id: "order_neg", items: [{ productId: "prod_1", nameDe: "Reis", qty: -1 }] }),
+      pendingOrder({ id: "../../admin" }),
+      pendingOrder({ id: "order_type", fulfilmentType: "drone" }),
+      pendingOrder({ id: "order_str", totalRappen: "2580" }),
+      pendingOrder({ id: "order_date", createdAt: "yesterday" }),
+      "not an order",
+      pendingOrder({ id: "order_ok" }),
+    ]);
+
+    const result = await importPendingOrders(settings);
+
+    expect(result.imported).toBe(1);
+    expect(result.failedOrderIds).toEqual([
+      "order_chf",
+      "order_neg",
+      "../../admin",
+      "order_type",
+      "order_str",
+      "order_date",
+      null,
+    ]);
+    expect(txMock.shopOrder.create).toHaveBeenCalledTimes(1);
+    expect(ackOrderMock).toHaveBeenCalledTimes(1);
+    expect(ackOrderMock).toHaveBeenCalledWith(settings, "order_ok");
+  });
+
+  it("stores the backend's price/VAT snapshot per line, also for a locally deleted product", async () => {
+    fetchPendingOrdersMock.mockResolvedValue([
+      pendingOrder({
+        totalRappen: 2580 + 1000,
+        items: [
+          { productId: "prod_1", nameDe: "Jasminreis 5kg", qty: 2, sku: "ASIA-00007", unitPriceRappen: 1290, lineTotalRappen: 2580, vatRate: 2.6 },
+          { productId: "prod_gone", nameDe: "Sake 0.7l", qty: 1, sku: "ASIA-00031", unitPriceRappen: 1000, lineTotalRappen: 1000, vatRate: 8.1 },
+        ],
+      }),
+    ]);
+
+    const result = await importPendingOrders(settings);
+
+    expect(result.imported).toBe(1);
+    expect(txMock.shopOrder.create.mock.calls[0][0].data.items.create).toEqual([
+      { productId: "prod_1", nameDe: "Jasminreis 5kg", qty: 2, sku: "ASIA-00007", unitPriceRappen: 1290, vatRate: 2.6, lineTotalRappen: 2580 },
+      // Deleted locally: the snapshot from the backend still keeps sku, price and VAT.
+      { productId: null, nameDe: "Sake 0.7l", qty: 1, sku: "ASIA-00031", unitPriceRappen: 1000, vatRate: 8.1, lineTotalRappen: 1000 },
+    ]);
+    expect(txMock.shopOrder.create.mock.calls[0][0].data.fulfilmentType).toBe("pickup");
+  });
+
+  it("rejects orders whose price snapshot is inconsistent, and still imports the rest", async () => {
+    const line = { productId: "prod_1", nameDe: "Jasminreis 5kg", qty: 2, unitPriceRappen: 1290, lineTotalRappen: 2580, vatRate: 2.6 };
+    fetchPendingOrdersMock.mockResolvedValue([
+      // Line totals add up to 2580, the order says 9999.
+      pendingOrder({ id: "order_sum", totalRappen: 9999, items: [line] }),
+      // lineTotal is not unitPrice * qty.
+      pendingOrder({ id: "order_line", items: [{ ...line, lineTotalRappen: 2000 }] }),
+      // Price without line total.
+      pendingOrder({ id: "order_half", items: [{ ...line, lineTotalRappen: undefined }] }),
+      // Prices on one line but not the other.
+      pendingOrder({ id: "order_mixed", totalRappen: 2580 + 450, items: [line, { productId: null, nameDe: "Tofu", qty: 1 }] }),
+      // Not a Swiss VAT rate.
+      pendingOrder({ id: "order_vat", items: [{ ...line, vatRate: 7.7 }] }),
+      // Rappen, not francs.
+      pendingOrder({ id: "order_float", totalRappen: 25.8, items: [{ ...line, unitPriceRappen: 12.9, lineTotalRappen: 25.8 }] }),
+      pendingOrder({ id: "order_ok", items: [line] }),
+    ]);
+
+    const result = await importPendingOrders(settings);
+
+    expect(result.imported).toBe(1);
+    expect(result.failedOrderIds).toEqual(["order_sum", "order_line", "order_half", "order_mixed", "order_vat", "order_float"]);
+    expect(ackOrderMock).toHaveBeenCalledTimes(1);
+    expect(ackOrderMock).toHaveBeenCalledWith(settings, "order_ok");
+  });
+
+  it("a response without an items array imports nothing and acks nothing", async () => {
+    fetchPendingOrdersMock.mockResolvedValue(undefined);
+
+    const result = await importPendingOrders(settings);
+
+    expect(result).toEqual({ imported: 0, failed: 1, failedOrderIds: [null], skippedNoSettings: false });
+    expect(prismaMock.$transaction).not.toHaveBeenCalled();
+    expect(ackOrderMock).not.toHaveBeenCalled();
+  });
+
+  it("a non-JSON body (fetch rejects) propagates without acking anything", async () => {
+    fetchPendingOrdersMock.mockRejectedValue(new SyntaxError("Unexpected token < in JSON"));
+
+    await expect(importPendingOrders(settings)).rejects.toThrow(SyntaxError);
+    expect(ackOrderMock).not.toHaveBeenCalled();
   });
 });

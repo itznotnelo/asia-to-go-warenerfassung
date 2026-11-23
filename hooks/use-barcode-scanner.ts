@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useRef } from "react";
-import { isValidBarcode } from "@/lib/barcode";
+import { isValidBarcode, normalizeGtin } from "@/lib/barcode";
 import { playScanError, playScanSuccess } from "@/lib/scan-feedback";
 
 // Ein USB-Handscanner verhält sich wie eine sehr schnelle Tastatur: Ziffern
@@ -11,6 +11,16 @@ import { playScanError, playScanSuccess } from "@/lib/scan-feedback";
 // verfälschen.
 const FAST_CHAR_GAP_MS = 50;
 const STALE_BUFFER_GAP_MS = 300;
+// Outside a field the burst is judged by its average gap, so a slightly slow
+// (wireless) scanner with a few 50-80ms gaps still counts. Inside a field the
+// strict per-gap rule above stays, because there a false hit would undo typing.
+const MAX_AVG_SCAN_GAP_MS = 80;
+// A burst into a focused field only counts as a scan from EAN-8 upwards, so a
+// fast typist entering a short price is never taken for the scanner.
+const MIN_FIELD_SCAN_DIGITS = 8;
+// 8+ digits plus Enter that were too slow for a scan: most likely a scanner
+// at its limit, so the user gets the error tone instead of silence.
+const MIN_REJECTED_SCAN_DIGITS = 8;
 
 // Modifier/Navigationstasten allein unterbrechen einen laufenden Scan nicht,
 // lösen aber auch kein Zeichen aus.
@@ -26,6 +36,10 @@ export interface UseBarcodeScannerOptions {
   onScan: (result: ScanResult) => void;
   /** Auf `false` setzen, um den Scanner temporär stillzulegen (z.B. während ein Dialog offen ist). */
   enabled?: boolean;
+  /** `false` = no success/error tone (for the field guard on pages without a scan workflow). */
+  feedback?: boolean;
+  /** 8+ digits and Enter arrived, but too slowly for a scan (only outside text fields). */
+  onRejectedScan?: () => void;
 }
 
 export interface UseBarcodeScannerResult {
@@ -40,35 +54,126 @@ export function isEditableTarget(target: EventTarget | null): boolean {
   return target.tagName === "INPUT" || target.tagName === "TEXTAREA" || target.tagName === "SELECT";
 }
 
-function reportScan(onScan: (result: ScanResult) => void, barcode: string) {
+type TextField = HTMLInputElement | HTMLTextAreaElement;
+
+function isTextField(target: EventTarget | null): target is TextField {
+  return target instanceof HTMLInputElement || target instanceof HTMLTextAreaElement;
+}
+
+/**
+ * Sets a field value so React notices it: React tracks the last value it set,
+ * so a plain `field.value = x` would be swallowed. The prototype setter plus a
+ * bubbling input event goes through React's onChange like real typing.
+ */
+function restoreFieldValue(field: TextField, value: string, selectionStart: number | null, selectionEnd: number | null) {
+  const proto = field instanceof HTMLTextAreaElement ? HTMLTextAreaElement.prototype : HTMLInputElement.prototype;
+  Object.getOwnPropertyDescriptor(proto, "value")?.set?.call(field, value);
+  field.dispatchEvent(new Event("input", { bubbles: true }));
+  if (selectionStart === null || selectionEnd === null) return;
+  try {
+    field.setSelectionRange(selectionStart, selectionEnd);
+  } catch {
+    // Some input types (number, email) have no selection API; the value is what matters.
+  }
+}
+
+function reportScan(onScan: (result: ScanResult) => void, raw: string, feedback = true) {
+  // Canonical GTIN (UPC-A -> EAN-13), so one product never gets two spellings.
+  const barcode = normalizeGtin(raw) ?? raw;
   const valid = isValidBarcode(barcode);
-  if (valid) {
-    playScanSuccess();
-  } else {
-    playScanError();
+  if (feedback) {
+    if (valid) {
+      playScanSuccess();
+    } else {
+      playScanError();
+    }
   }
   onScan({ barcode, valid });
 }
 
-export function useBarcodeScanner({ onScan, enabled = true }: UseBarcodeScannerOptions): UseBarcodeScannerResult {
+/** True when the digits came in fast enough on average to be a scanner. */
+export function isScannerSpeed(digitCount: number, firstCharTime: number, lastCharTime: number): boolean {
+  if (digitCount < 2) return true;
+  return (lastCharTime - firstCharTime) / (digitCount - 1) <= MAX_AVG_SCAN_GAP_MS;
+}
+
+export function useBarcodeScanner({ onScan, enabled = true, feedback = true, onRejectedScan }: UseBarcodeScannerOptions): UseBarcodeScannerResult {
   const onScanRef = useRef(onScan);
   onScanRef.current = onScan;
+  const onRejectedScanRef = useRef(onRejectedScan);
+  onRejectedScanRef.current = onRejectedScan;
 
   useEffect(() => {
     if (!enabled) return;
 
     let buffer = "";
+    let firstCharTime = 0;
     let lastCharTime = 0;
-    // Wird auf `false` gesetzt, sobald ein Zeichenabstand >= 50ms auftrat —
-    // dann ist es kein Scanner, sondern jemand tippt zufällig Ziffern.
-    let looksLikeScanner = true;
+
+    // Burst into a focused text field. The digits do land in the field (we
+    // only know it was the scanner once Enter arrives), so the value from
+    // before the first digit is kept to undo them.
+    let field: {
+      target: TextField;
+      digits: string;
+      lastTime: number;
+      valueBefore: string;
+      selectionStart: number | null;
+      selectionEnd: number | null;
+    } | null = null;
 
     function reset() {
       buffer = "";
-      looksLikeScanner = true;
+    }
+
+    function handleFieldKeydown(event: KeyboardEvent, target: TextField) {
+      if (event.ctrlKey || event.metaKey || event.altKey) {
+        field = null;
+        return;
+      }
+      if (IGNORED_KEYS.has(event.key)) return;
+
+      const now = performance.now();
+      const burstGoesOn = field !== null && field.target === target && now - field.lastTime < FAST_CHAR_GAP_MS;
+
+      if (event.key === "Enter") {
+        const burst = burstGoesOn ? field : null;
+        field = null;
+        if (!burst || burst.digits.length < MIN_FIELD_SCAN_DIGITS) return;
+        // The scanner's Enter must not submit the form with the EAN in it.
+        event.preventDefault();
+        event.stopPropagation();
+        restoreFieldValue(target, burst.valueBefore, burst.selectionStart, burst.selectionEnd);
+        reportScan(onScanRef.current, burst.digits, feedback);
+        return;
+      }
+
+      if (!/^\d$/.test(event.key)) {
+        field = null;
+        return;
+      }
+
+      if (burstGoesOn && field) {
+        field.digits += event.key;
+        field.lastTime = now;
+        return;
+      }
+      // keydown runs before the character is inserted, so this is the clean value.
+      field = {
+        target,
+        digits: event.key,
+        lastTime: now,
+        valueBefore: target.value,
+        selectionStart: target.selectionStart,
+        selectionEnd: target.selectionEnd,
+      };
     }
 
     function handleKeydown(event: KeyboardEvent) {
+      if (isTextField(event.target)) {
+        handleFieldKeydown(event, event.target);
+        return;
+      }
       if (isEditableTarget(event.target)) return;
 
       if (event.ctrlKey || event.metaKey || event.altKey) {
@@ -79,10 +184,13 @@ export function useBarcodeScanner({ onScan, enabled = true }: UseBarcodeScannerO
 
       if (event.key === "Enter") {
         const barcode = buffer;
-        const scanWasFastEnough = looksLikeScanner;
         reset();
-        if (barcode && scanWasFastEnough) {
-          reportScan(onScanRef.current, barcode);
+        if (!barcode) return;
+        if (isScannerSpeed(barcode.length, firstCharTime, lastCharTime)) {
+          reportScan(onScanRef.current, barcode, feedback);
+        } else if (barcode.length >= MIN_REJECTED_SCAN_DIGITS) {
+          if (feedback) playScanError();
+          onRejectedScanRef.current?.();
         }
         return;
       }
@@ -93,22 +201,20 @@ export function useBarcodeScanner({ onScan, enabled = true }: UseBarcodeScannerO
       }
 
       const now = performance.now();
-      if (buffer.length > 0) {
-        const gap = now - lastCharTime;
-        if (gap > STALE_BUFFER_GAP_MS) {
-          reset();
-        } else if (gap >= FAST_CHAR_GAP_MS) {
-          looksLikeScanner = false;
-        }
+      if (buffer.length > 0 && now - lastCharTime > STALE_BUFFER_GAP_MS) {
+        reset();
       }
+      if (buffer.length === 0) firstCharTime = now;
 
       buffer += event.key;
       lastCharTime = now;
     }
 
-    document.addEventListener("keydown", handleKeydown);
-    return () => document.removeEventListener("keydown", handleKeydown);
-  }, [enabled]);
+    // Capture phase: runs before the field's own handlers and before the
+    // form sees the scanner's Enter.
+    document.addEventListener("keydown", handleKeydown, true);
+    return () => document.removeEventListener("keydown", handleKeydown, true);
+  }, [enabled, feedback]);
 
   const submitManualBarcode = useCallback((value: string) => {
     const barcode = value.trim();

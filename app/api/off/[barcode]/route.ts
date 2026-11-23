@@ -16,7 +16,7 @@ export async function GET(_request: Request, { params }: { params: Promise<{ bar
 
   if (lookup.error) {
     return NextResponse.json(
-      { found: false, error: true, message: "Open Food Facts ist gerade nicht erreichbar." },
+      { found: false, error: true, message: "Online-Suche geht gerade nicht." },
       { status: 502 },
     );
   }

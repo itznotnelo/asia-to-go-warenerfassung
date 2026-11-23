@@ -3,6 +3,10 @@ const path = require("node:path");
 
 /** @type {import('electron-builder').Configuration} */
 module.exports = {
+  // NEVER change appId again. NSIS derives the Apps & Features uninstall key
+  // from it, while the install folder and userData come from productName: a
+  // new appId leaves a second entry pointing at the same folder (0.1.4 did
+  // this, build/installer.nsh cleans it up). See CLAUDE.md.
   appId: "io.github.itznotnelo.asia-to-go",
   productName: "Asia To Go",
   directories: {
@@ -52,7 +56,26 @@ module.exports = {
       fs.cpSync(engineSrc, engineDest, { recursive: true });
       console.log(`Copied prisma-engines -> ${engineDest}`);
     }
+
+    // pg_dump.exe / pg_restore.exe 18.x + the DLLs they import, from the EDB
+    // Windows binaries zip (embedded-postgres ships no client tools, #3068).
+    // Populated by the release workflow. Without them every backup fails and
+    // the pre-migrate hook blocks every schema update, so a CI build must not
+    // ship without them.
+    const pgToolsSrc = path.join(__dirname, "electron", "resources", "pg-tools");
+    if (fs.existsSync(path.join(pgToolsSrc, "pg_dump.exe"))) {
+      const pgToolsDest = path.join(context.appOutDir, "resources", "pg-tools");
+      fs.cpSync(pgToolsSrc, pgToolsDest, { recursive: true });
+      console.log(`Copied pg-tools -> ${pgToolsDest}`);
+    } else if (process.env.CI) {
+      throw new Error(`pg-tools missing at ${pgToolsSrc}: backups (and migrations) would not work`);
+    } else {
+      console.warn(`WARNING: no pg-tools at ${pgToolsSrc}; this local build cannot make backups`);
+    }
   },
+  // Unsigned for now: a code-signing certificate costs money and waits for the
+  // owner's OK (#44). Once there is one, set win.signtoolOptions.publisherName
+  // so electron-updater refuses updates signed by anyone else.
   win: {
     target: "nsis",
     icon: "build/icon.ico",
@@ -61,5 +84,7 @@ module.exports = {
     oneClick: false,
     perMachine: false,
     allowToChangeInstallationDirectory: true,
+    // Removes the stale pre-0.1.4 'Asia To Go' entry (old appId); data stays.
+    include: "build/installer.nsh",
   },
 };

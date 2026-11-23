@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { buildCategoryCounts, computeOffHitRate } from "./stats";
+import { buildCategoryCounts, computeOffHitRate, countIncomplete, WORK_QUEUE_LIMIT } from "./stats";
 
 describe("computeOffHitRate", () => {
   it("returns null when no OFF attempt has happened yet", () => {
@@ -22,6 +22,21 @@ describe("computeOffHitRate", () => {
 
   it("is 1 when every OFF attempt hit", () => {
     expect(computeOffHitRate({ existing_product: 0, off_hit: 4, off_miss: 0 })).toBe(1);
+  });
+});
+
+describe("countIncomplete", () => {
+  it("counts every incomplete article, not just the capped list", () => {
+    expect(countIncomplete(340, 120)).toBe(220);
+    expect(countIncomplete(340, 120)).toBeGreaterThan(WORK_QUEUE_LIMIT);
+  });
+
+  it("is 0 when everything is complete", () => {
+    expect(countIncomplete(12, 12)).toBe(0);
+  });
+
+  it("never goes negative if the two counts race", () => {
+    expect(countIncomplete(5, 6)).toBe(0);
   });
 });
 

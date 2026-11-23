@@ -4,16 +4,18 @@ import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { useState, useTransition } from "react";
 import { cn } from "@/lib/utils";
-import { formatChf } from "@/lib/pricing";
+import { formatChf, parseChfToRappen, PRICE_ERROR } from "@/lib/pricing";
 import { quickUpdateProduct } from "@/app/scan/actions";
 import type { CategoryOption } from "@/lib/category-option";
 import type { ProductSummary } from "@/lib/product-summary";
 import { bulkUpdateProducts } from "./actions";
 import type { BulkUpdatePatch } from "@/lib/bulk-update-patch";
 import { BulkActionBar } from "./bulk-action-bar";
+import { SaveErrorBox } from "@/components/save-error-box";
+import { saveErrorLines, settle, type SaveFailure } from "@/lib/save-error";
 
 const STORAGE_LABELS: Record<string, string> = { ambient: "Trocken", chilled: "Gekühlt", frozen: "Tiefgekühlt" };
-const SOURCE_LABELS: Record<string, string> = { openfoodfacts: "OFF", manual: "Manuell", ai_extracted: "KI" };
+const SOURCE_LABELS: Record<string, string> = { openfoodfacts: "Online", manual: "Manuell", ai_extracted: "KI" };
 
 interface ProductsTableProps {
   products: ProductSummary[];
@@ -25,7 +27,9 @@ export function ProductsTable({ products, categories }: ProductsTableProps) {
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [editingPriceId, setEditingPriceId] = useState<string | null>(null);
   const [priceDraft, setPriceDraft] = useState("");
-  const [, startTransition] = useTransition();
+  const [priceDraftError, setPriceDraftError] = useState(false);
+  const [updateError, setUpdateError] = useState<string[] | null>(null);
+  const [isPending, startTransition] = useTransition();
 
   function toggleSelected(id: string) {
     setSelected((prev) => {
@@ -43,52 +47,62 @@ export function ProductsTable({ products, categories }: ProductsTableProps) {
   function startEditPrice(product: ProductSummary) {
     setEditingPriceId(product.id);
     setPriceDraft((product.priceRappen / 100).toFixed(2));
+    setPriceDraftError(false);
   }
 
   function commitPrice(product: ProductSummary) {
-    const priceRappen = Math.round(Number.parseFloat(priceDraft.replace(",", ".")) * 100);
+    const priceRappen = parseChfToRappen(priceDraft);
+    // Keep the editor open on unparseable input instead of silently dropping it; Esc cancels.
+    if (priceRappen === null || priceRappen <= 0) {
+      setPriceDraftError(true);
+      return;
+    }
+    setPriceDraftError(false);
     setEditingPriceId(null);
-    if (!Number.isFinite(priceRappen) || priceRappen <= 0 || priceRappen === product.priceRappen) return;
-    startTransition(async () => {
-      await quickUpdateProduct({ id: product.id, priceRappen, isAvailable: product.isAvailable });
-      router.refresh();
-    });
+    if (priceRappen === product.priceRappen) return;
+    runUpdate(() => quickUpdateProduct({ id: product.id, priceRappen, isAvailable: product.isAvailable }));
   }
 
   function toggleAvailability(product: ProductSummary) {
-    startTransition(async () => {
-      await quickUpdateProduct({ id: product.id, priceRappen: product.priceRappen, isAvailable: !product.isAvailable });
-      router.refresh();
-    });
+    runUpdate(() => quickUpdateProduct({ id: product.id, priceRappen: product.priceRappen, isAvailable: !product.isAvailable }));
   }
 
   function applyBulk(patch: BulkUpdatePatch) {
     if (selected.size === 0) return;
+    // Selection stays on failure so the change can be retried.
+    runUpdate(() => bulkUpdateProducts({ ids: [...selected], ...patch }), () => setSelected(new Set()));
+  }
+
+  function runUpdate(action: () => Promise<{ ok: true } | SaveFailure>, onSuccess?: () => void) {
+    setUpdateError(null);
     startTransition(async () => {
-      await bulkUpdateProducts({ ids: [...selected], ...patch });
-      setSelected(new Set());
+      const result = await settle(action);
+      if (result.ok) onSuccess?.();
+      else setUpdateError(saveErrorLines(result));
       router.refresh();
     });
   }
 
   return (
     <div className="flex flex-col gap-3">
-      {selected.size > 0 && <BulkActionBar count={selected.size} categories={categories} onApply={applyBulk} disabled={false} />}
+      <SaveErrorBox lines={updateError} />
+
+      {selected.size > 0 && <BulkActionBar count={selected.size} categories={categories} onApply={applyBulk} disabled={isPending} />}
 
       <div className="overflow-x-auto rounded-xl border border-border">
-        <table className="w-full text-sm">
+        <table className="w-full text-sm" aria-label="Artikelliste">
           <thead className="bg-secondary text-left text-muted-foreground">
             <tr>
-              <th className="w-10 px-3 py-2">
-                <input type="checkbox" checked={selected.size === products.length && products.length > 0} onChange={toggleAll} />
+              <th className="w-10 px-3 py-2" scope="col">
+                <input type="checkbox" aria-label="Alle auswählen" checked={selected.size === products.length && products.length > 0} onChange={toggleAll} />
               </th>
-              <th className="px-3 py-2">Artikel</th>
-              <th className="px-3 py-2">Kategorie</th>
-              <th className="px-3 py-2">Preis</th>
-              <th className="px-3 py-2">Lagerung</th>
-              <th className="px-3 py-2">Quelle</th>
-              <th className="px-3 py-2">Status</th>
-              <th className="px-3 py-2">Verfügbar</th>
+              <th className="px-3 py-2" scope="col">Artikel</th>
+              <th className="px-3 py-2" scope="col">Kategorie</th>
+              <th className="px-3 py-2" scope="col">Preis</th>
+              <th className="px-3 py-2" scope="col">Lagerung</th>
+              <th className="px-3 py-2" scope="col">Quelle</th>
+              <th className="px-3 py-2" scope="col">Status</th>
+              <th className="px-3 py-2" scope="col">Verfügbar</th>
             </tr>
           </thead>
           <tbody>
@@ -97,7 +111,7 @@ export function ProductsTable({ products, categories }: ProductsTableProps) {
               return (
                 <tr key={product.id} className="border-t border-border hover:bg-muted/50">
                   <td className="px-3 py-2">
-                    <input type="checkbox" checked={selected.has(product.id)} onChange={() => toggleSelected(product.id)} />
+                    <input type="checkbox" aria-label={`Auswahl ${product.nameDe}`} checked={selected.has(product.id)} onChange={() => toggleSelected(product.id)} />
                   </td>
                   <td className="px-3 py-2">
                     <Link href={`/products/${product.id}`} className="hover:underline">
@@ -108,22 +122,33 @@ export function ProductsTable({ products, categories }: ProductsTableProps) {
                       {product.nameOriginal && ` · ${product.nameOriginal}`}
                     </div>
                   </td>
-                  <td className="px-3 py-2 text-muted-foreground">{category?.name ?? "—"}</td>
+                  <td className="px-3 py-2 text-muted-foreground">{category?.name ?? "ohne Kategorie"}</td>
                   <td className="font-numeric px-3 py-2">
                     {editingPriceId === product.id ? (
-                      <input
-                        autoFocus
-                        value={priceDraft}
-                        onChange={(e) => setPriceDraft(e.target.value)}
-                        onBlur={() => commitPrice(product)}
-                        onKeyDown={(e) => {
-                          if (e.key === "Enter") commitPrice(product);
-                          if (e.key === "Escape") setEditingPriceId(null);
-                        }}
-                        className="h-8 w-24 rounded border border-input bg-transparent px-2"
-                      />
+                      <>
+                        <input
+                          autoFocus
+                          inputMode="decimal"
+                          aria-label={`Preis ${product.nameDe}`}
+                          value={priceDraft}
+                          onChange={(e) => setPriceDraft(e.target.value)}
+                          onBlur={() => commitPrice(product)}
+                          onKeyDown={(e) => {
+                            if (e.key === "Enter") commitPrice(product);
+                            if (e.key === "Escape") setEditingPriceId(null);
+                          }}
+                          aria-invalid={priceDraftError}
+                          disabled={isPending}
+                          className="h-8 w-24 rounded border border-input bg-transparent px-2 aria-invalid:border-destructive disabled:opacity-50"
+                        />
+                        {priceDraftError && (
+                          <span role="alert" className="block text-xs text-destructive">
+                            {PRICE_ERROR}
+                          </span>
+                        )}
+                      </>
                     ) : (
-                      <button type="button" onClick={() => startEditPrice(product)} className="hover:underline">
+                      <button type="button" onClick={() => startEditPrice(product)} disabled={isPending} className="hover:underline disabled:opacity-50">
                         {formatChf(product.priceRappen)}
                       </button>
                     )}
@@ -133,7 +158,7 @@ export function ProductsTable({ products, categories }: ProductsTableProps) {
                   <td className="px-3 py-2">
                     <span
                       className={cn(
-                        "rounded-full px-2 py-0.5 text-xs",
+                        "rounded-sm px-2 py-0.5 text-xs",
                         product.dataComplete ? "bg-success/20 text-success" : "bg-muted text-muted-foreground",
                       )}
                     >
@@ -141,7 +166,7 @@ export function ProductsTable({ products, categories }: ProductsTableProps) {
                     </span>
                   </td>
                   <td className="px-3 py-2">
-                    <input type="checkbox" checked={product.isAvailable} onChange={() => toggleAvailability(product)} />
+                    <input type="checkbox" aria-label={`Verfügbar: ${product.nameDe}`} checked={product.isAvailable} onChange={() => toggleAvailability(product)} disabled={isPending} />
                   </td>
                 </tr>
               );

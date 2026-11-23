@@ -19,6 +19,9 @@ export interface ProductSummary {
   storageType: StorageType;
   ingredientsDe: string | null;
   allergens: string[];
+  traces: string[];
+  /** allergensConfirmedAt !== null; a Date would not need to cross the RSC boundary for the form. */
+  allergensConfirmed: boolean;
   isAvailable: boolean;
   dataSource: DataSource;
   dataComplete: boolean;
@@ -47,6 +50,8 @@ export function toProductSummary(product: Product): ProductSummary {
     storageType: product.storageType,
     ingredientsDe: product.ingredientsDe,
     allergens: product.allergens,
+    traces: product.traces,
+    allergensConfirmed: product.allergensConfirmedAt !== null,
     isAvailable: product.isAvailable,
     dataSource: product.dataSource,
     dataComplete: product.dataComplete,

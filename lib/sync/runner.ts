@@ -7,14 +7,45 @@ import { getShopSyncSettings } from "./settings";
 
 export interface SyncRunResult {
   sent: number;
-  dropped: number;
+  stuck: number;
   failed: number;
   ordersImported: number;
+  /** Orders the backend offered but this pass could not import; they stay pending and are retried. */
+  ordersFailed: number;
+  failedOrderIds: (string | null)[];
   skippedNoSettings: boolean;
 }
 
-/** One full sync pass: push the outbox, then pull new paid orders. Used by the manual "Alles synchronisieren" button and the periodic background poll (electron/src/main.ts). */
-export async function runSyncPass(): Promise<SyncRunResult> {
+let current: Promise<SyncRunResult> | null = null;
+let followUp: Promise<SyncRunResult> | null = null;
+
+/**
+ * One full sync pass: push the outbox, then pull new paid orders. Used by the manual "Alles synchronisieren" button, the periodic background poll (electron/src/main.ts) and every save.
+ *
+ * Single-flight: passes never overlap (overlapping publishes could land a
+ * stale payload last, and double-upload pending images). A call while a pass
+ * runs gets one shared follow-up pass that starts after it, because the
+ * running pass may have read the outbox before that caller's save.
+ */
+export function runSyncPass(): Promise<SyncRunResult> {
+  if (!current) {
+    current = runOnePass().finally(() => {
+      current = null;
+    });
+    return current;
+  }
+  if (!followUp) {
+    followUp = current
+      .catch(() => undefined)
+      .then(() => {
+        followUp = null;
+        return runSyncPass();
+      });
+  }
+  return followUp;
+}
+
+async function runOnePass(): Promise<SyncRunResult> {
   const settings = await getShopSyncSettings();
 
   // Any photo that's reached dataComplete locally but never made it to R2
@@ -30,9 +61,11 @@ export async function runSyncPass(): Promise<SyncRunResult> {
   const orderResult = await importPendingOrders(settings);
   return {
     sent: drainResult.sent,
-    dropped: drainResult.dropped,
+    stuck: drainResult.stuck,
     failed: drainResult.failed,
     ordersImported: orderResult.imported,
+    ordersFailed: orderResult.failed,
+    failedOrderIds: orderResult.failedOrderIds,
     skippedNoSettings: drainResult.skippedNoSettings,
   };
 }

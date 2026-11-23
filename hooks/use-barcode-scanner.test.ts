@@ -8,7 +8,7 @@ vi.mock("@/lib/scan-feedback", () => ({
 }));
 
 const { playScanError, playScanSuccess } = await import("@/lib/scan-feedback");
-const { isEditableTarget, useBarcodeScanner } = await import("./use-barcode-scanner");
+const { isEditableTarget, isScannerSpeed, useBarcodeScanner } = await import("./use-barcode-scanner");
 
 const VALID_EAN13 = "3017620422003"; // Nutella, echter Barcode
 const INVALID_EAN13 = "3017620422007"; // Prüfziffer bewusst kaputt
@@ -52,6 +52,14 @@ describe("isEditableTarget", () => {
   });
 });
 
+describe("isScannerSpeed", () => {
+  it("judges the average gap, with 80ms as the limit", () => {
+    expect(isScannerSpeed(13, 0, 12 * 80)).toBe(true);
+    expect(isScannerSpeed(13, 0, 12 * 81)).toBe(false);
+    expect(isScannerSpeed(1, 0, 0)).toBe(true);
+  });
+});
+
 describe("useBarcodeScanner", () => {
   it("recognizes a fast, valid scan and plays the success tone", () => {
     const onScan = vi.fn();
@@ -75,14 +83,55 @@ describe("useBarcodeScanner", () => {
     expect(playScanSuccess).not.toHaveBeenCalled();
   });
 
-  it("ignores slow, human-speed typing instead of treating it as a scan", () => {
+  it("accepts a slightly slow wireless scanner whose average gap stays within 80ms", () => {
     const onScan = vi.fn();
     renderHook(() => useBarcodeScanner({ onScan }));
 
-    typeAsScanner(VALID_EAN13, 80); // > 50ms Zeichenabstand
+    let now = 1000;
+    const nowSpy = vi.spyOn(performance, "now").mockImplementation(() => now);
+    // Gaps alternate 30/75ms: several single gaps >= 50ms, average ~52ms.
+    [...VALID_EAN13].forEach((char, i) => {
+      document.dispatchEvent(new KeyboardEvent("keydown", { key: char, bubbles: true }));
+      now += i % 2 === 0 ? 30 : 75;
+    });
+    document.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", bubbles: true }));
+    nowSpy.mockRestore();
+
+    expect(onScan).toHaveBeenCalledWith({ barcode: VALID_EAN13, valid: true });
+  });
+
+  it("rejects 8+ digits that came too slowly with the error tone and the rejected callback", () => {
+    const onScan = vi.fn();
+    const onRejectedScan = vi.fn();
+    renderHook(() => useBarcodeScanner({ onScan, onRejectedScan }));
+
+    typeAsScanner(VALID_EAN13, 120);
 
     expect(onScan).not.toHaveBeenCalled();
+    expect(onRejectedScan).toHaveBeenCalledOnce();
+    expect(playScanError).toHaveBeenCalledOnce();
     expect(playScanSuccess).not.toHaveBeenCalled();
+  });
+
+  it("stays silent on a few slowly typed digits", () => {
+    const onScan = vi.fn();
+    const onRejectedScan = vi.fn();
+    renderHook(() => useBarcodeScanner({ onScan, onRejectedScan }));
+
+    typeAsScanner("1250", 120);
+
+    expect(onScan).not.toHaveBeenCalled();
+    expect(onRejectedScan).not.toHaveBeenCalled();
+    expect(playScanError).not.toHaveBeenCalled();
+  });
+
+  it("rejects a too-slow scan without a tone when feedback is off", () => {
+    const onRejectedScan = vi.fn();
+    renderHook(() => useBarcodeScanner({ onScan: vi.fn(), onRejectedScan, feedback: false }));
+
+    typeAsScanner(VALID_EAN13, 120);
+
+    expect(onRejectedScan).toHaveBeenCalledOnce();
     expect(playScanError).not.toHaveBeenCalled();
   });
 
@@ -110,24 +159,129 @@ describe("useBarcodeScanner", () => {
     expect(onScan).toHaveBeenCalledWith({ barcode: VALID_EAN13, valid: true });
   });
 
-  it("does not react while a text field is focused", () => {
-    const onScan = vi.fn();
-    renderHook(() => useBarcodeScanner({ onScan }));
-
-    const input = document.createElement("input");
-    document.body.appendChild(input);
-
-    let now = 1000;
-    const nowSpy = vi.spyOn(performance, "now").mockImplementation(() => now);
-    for (const char of VALID_EAN13) {
-      input.dispatchEvent(new KeyboardEvent("keydown", { key: char, bubbles: true }));
-      now += 5;
+  describe("focused text field", () => {
+    /**
+     * Types into a real input like a browser: keydown first, and the character
+     * only lands in the field if nobody called preventDefault. Returns the Enter
+     * event so the test can check whether the form submit was blocked.
+     */
+    function typeIntoField(field: HTMLInputElement, text: string, gapMs: number) {
+      let now = 1000;
+      const nowSpy = vi.spyOn(performance, "now").mockImplementation(() => now);
+      for (const char of text) {
+        const keydown = new KeyboardEvent("keydown", { key: char, bubbles: true, cancelable: true });
+        field.dispatchEvent(keydown);
+        if (!keydown.defaultPrevented) {
+          field.value += char;
+          field.dispatchEvent(new Event("input", { bubbles: true }));
+        }
+        now += gapMs;
+      }
+      const enter = new KeyboardEvent("keydown", { key: "Enter", bubbles: true, cancelable: true });
+      field.dispatchEvent(enter);
+      nowSpy.mockRestore();
+      return enter;
     }
-    input.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", bubbles: true }));
-    nowSpy.mockRestore();
 
-    expect(onScan).not.toHaveBeenCalled();
-    document.body.removeChild(input);
+    function priceField(value: string) {
+      const input = document.createElement("input");
+      input.inputMode = "decimal";
+      input.value = value;
+      document.body.appendChild(input);
+      input.focus();
+      input.setSelectionRange(value.length, value.length);
+      return input;
+    }
+
+    afterEach(() => {
+      document.body.innerHTML = "";
+    });
+
+    it("takes a scan out of a pre-filled price field, restores the price and reports the EAN", () => {
+      const onScan = vi.fn();
+      renderHook(() => useBarcodeScanner({ onScan }));
+      const input = priceField("3.50");
+      const formKeydown = vi.fn();
+      input.addEventListener("keydown", formKeydown);
+
+      const enter = typeIntoField(input, VALID_EAN13, 5);
+
+      expect(input.value).toBe("3.50");
+      expect(onScan).toHaveBeenCalledWith({ barcode: VALID_EAN13, valid: true });
+      expect(enter.defaultPrevented).toBe(true);
+      // The field's own Enter handler (form submit) never sees the scanner's Enter.
+      expect(formKeydown.mock.calls.map(([event]) => event)).not.toContain(enter);
+    });
+
+    it("tells React about the restored value through an input event", () => {
+      renderHook(() => useBarcodeScanner({ onScan: vi.fn() }));
+      const input = priceField("3.50");
+      const seen: string[] = [];
+      input.addEventListener("input", () => seen.push(input.value));
+
+      typeIntoField(input, "76123456", 5);
+
+      expect(seen.at(-1)).toBe("3.50");
+    });
+
+    it("leaves human typing in a field alone", () => {
+      const onScan = vi.fn();
+      renderHook(() => useBarcodeScanner({ onScan }));
+      const input = priceField("");
+
+      const enter = typeIntoField(input, "1250", 120);
+
+      expect(input.value).toBe("1250");
+      expect(onScan).not.toHaveBeenCalled();
+      expect(enter.defaultPrevented).toBe(false);
+    });
+
+    it("does not treat a short fast burst (under 8 digits) as a scan", () => {
+      const onScan = vi.fn();
+      renderHook(() => useBarcodeScanner({ onScan }));
+      const input = priceField("");
+
+      const enter = typeIntoField(input, "495", 5);
+
+      expect(input.value).toBe("495");
+      expect(onScan).not.toHaveBeenCalled();
+      expect(enter.defaultPrevented).toBe(false);
+    });
+
+    it("does not count a burst that started in another field", () => {
+      const onScan = vi.fn();
+      renderHook(() => useBarcodeScanner({ onScan }));
+      const first = priceField("");
+      const second = priceField("");
+
+      let now = 1000;
+      const nowSpy = vi.spyOn(performance, "now").mockImplementation(() => now);
+      for (const char of "1234567") {
+        first.dispatchEvent(new KeyboardEvent("keydown", { key: char, bubbles: true }));
+        now += 5;
+      }
+      second.dispatchEvent(new KeyboardEvent("keydown", { key: "8", bubbles: true }));
+      now += 5;
+      const enter = new KeyboardEvent("keydown", { key: "Enter", bubbles: true, cancelable: true });
+      second.dispatchEvent(enter);
+      nowSpy.mockRestore();
+
+      expect(onScan).not.toHaveBeenCalled();
+      expect(enter.defaultPrevented).toBe(false);
+    });
+
+    it("stays silent with feedback off but still undoes the burst", () => {
+      const onScan = vi.fn();
+      renderHook(() => useBarcodeScanner({ onScan, feedback: false }));
+      const input = priceField("4.95");
+
+      typeIntoField(input, VALID_EAN13, 5);
+
+      expect(input.value).toBe("4.95");
+      expect(onScan).toHaveBeenCalledWith({ barcode: VALID_EAN13, valid: true });
+      expect(playScanSuccess).not.toHaveBeenCalled();
+      expect(playScanError).not.toHaveBeenCalled();
+    });
   });
 
   it("does nothing while disabled", () => {
@@ -171,6 +325,15 @@ describe("useBarcodeScanner", () => {
 
       expect(onScan).toHaveBeenCalledWith({ barcode: VALID_EAN13, valid: true });
       expect(playScanSuccess).toHaveBeenCalledOnce();
+    });
+
+    it("reports a UPC-A in its canonical EAN-13 form", () => {
+      const onScan = vi.fn();
+      const { result } = renderHook(() => useBarcodeScanner({ onScan }));
+
+      result.current.submitManualBarcode("036000291452");
+
+      expect(onScan).toHaveBeenCalledWith({ barcode: "0036000291452", valid: true });
     });
 
     it("ignores empty manual input", () => {

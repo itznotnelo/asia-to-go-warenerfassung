@@ -5,6 +5,7 @@ import { toProductSummary } from "@/lib/product-summary";
 import { buildProductWhere, type ProductListFilters } from "./query";
 import { ProductsFilterBar } from "./filter-bar";
 import { ProductsTable } from "./products-table";
+import { UndoDeleteBanner } from "./undo-delete-banner";
 
 const PAGE_SIZE = 50;
 
@@ -24,11 +25,13 @@ export default async function ProductsPage({ searchParams }: ProductsPageProps) 
     storageType: firstString(params.storage),
     dataSource: firstString(params.source),
     complete: firstString(params.complete),
+    archived: firstString(params.archived),
   };
   const page = Math.max(1, Number(firstString(params.page)) || 1);
   const where = buildProductWhere(filters);
+  const deletedId = firstString(params.deleted);
 
-  const [categories, products, total] = await Promise.all([
+  const [categories, products, total, justDeleted] = await Promise.all([
     getCategories(),
     prisma.product.findMany({
       where,
@@ -37,6 +40,10 @@ export default async function ProductsPage({ searchParams }: ProductsPageProps) 
       take: PAGE_SIZE,
     }),
     prisma.product.count({ where }),
+    // Only an article that is still archived gets the "Rückgängig" toast.
+    deletedId
+      ? prisma.product.findFirst({ where: { id: deletedId, archivedAt: { not: null } }, select: { id: true, nameDe: true } })
+      : null,
   ]);
 
   const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE));
@@ -45,12 +52,15 @@ export default async function ProductsPage({ searchParams }: ProductsPageProps) 
     <div className="mx-auto flex w-full max-w-6xl flex-col gap-6 px-4 py-10">
       <div className="flex items-center justify-between">
         <h1 className="text-xl font-semibold">
-          Artikel <span className="font-numeric text-muted-foreground">({total})</span>
+          {filters.archived === "true" ? "Gelöschte Artikel" : "Artikel"}{" "}
+          <span className="font-numeric text-muted-foreground">({total})</span>
         </h1>
         <Link href="/scan" className="text-sm text-primary hover:underline">
           Neu erfassen
         </Link>
       </div>
+
+      {justDeleted && <UndoDeleteBanner key={justDeleted.id} id={justDeleted.id} nameDe={justDeleted.nameDe} />}
 
       <ProductsFilterBar categories={categories} filters={filters} />
       <ProductsTable products={products.map(toProductSummary)} categories={categories} />
@@ -79,7 +89,8 @@ function PageLink({
 }) {
   const query = new URLSearchParams();
   for (const [key, value] of Object.entries(params)) {
-    if (key === "page" || value === undefined) continue;
+    // "deleted" only drives the one-off undo toast, it must not follow the pagination.
+    if (key === "page" || key === "deleted" || value === undefined) continue;
     query.set(key, Array.isArray(value) ? value[0] : value);
   }
   query.set("page", String(page));

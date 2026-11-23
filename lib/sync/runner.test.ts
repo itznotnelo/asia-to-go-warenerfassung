@@ -25,8 +25,8 @@ beforeEach(() => {
   getShopSyncSettingsMock.mockReset().mockResolvedValue(settings);
   pushPendingImagesMock.mockReset().mockResolvedValue([]);
   enqueueProductSyncMock.mockReset().mockResolvedValue(undefined);
-  drainOutboxMock.mockReset().mockResolvedValue({ sent: 0, dropped: 0, failed: 0, skippedNoSettings: false });
-  importPendingOrdersMock.mockReset().mockResolvedValue({ imported: 0, skippedNoSettings: false });
+  drainOutboxMock.mockReset().mockResolvedValue({ sent: 0, stuck:0, failed: 0, skippedNoSettings: false });
+  importPendingOrdersMock.mockReset().mockResolvedValue({ imported: 0, failed: 0, failedOrderIds: [], skippedNoSettings: false });
 });
 
 describe("runSyncPass", () => {
@@ -41,11 +41,82 @@ describe("runSyncPass", () => {
   });
 
   it("combines the drain and order-import results", async () => {
-    drainOutboxMock.mockResolvedValue({ sent: 3, dropped: 1, failed: 0, skippedNoSettings: false });
-    importPendingOrdersMock.mockResolvedValue({ imported: 2, skippedNoSettings: false });
+    drainOutboxMock.mockResolvedValue({ sent: 3, stuck:1, failed: 0, skippedNoSettings: false });
+    importPendingOrdersMock.mockResolvedValue({ imported: 2, failed: 1, failedOrderIds: ["order_bad"], skippedNoSettings: false });
 
     const result = await runSyncPass();
 
-    expect(result).toEqual({ sent: 3, dropped: 1, failed: 0, ordersImported: 2, skippedNoSettings: false });
+    expect(result).toEqual({
+      sent: 3,
+      stuck: 1,
+      failed: 0,
+      ordersImported: 2,
+      ordersFailed: 1,
+      failedOrderIds: ["order_bad"],
+      skippedNoSettings: false,
+    });
+  });
+});
+
+describe("runSyncPass single-flight (must 6)", () => {
+  function deferred() {
+    let resolve!: () => void;
+    let reject!: (error: Error) => void;
+    const promise = new Promise<void>((res, rej) => {
+      resolve = res;
+      reject = rej;
+    });
+    // Rejected before the pass reaches drainOutbox: mark handled so vitest
+    // doesn't report it as unhandled; awaiting it later still throws.
+    promise.catch(() => undefined);
+    return { promise, resolve, reject };
+  }
+
+  it("never runs two passes at once and folds triggers during a pass into one follow-up", async () => {
+    const first = deferred();
+    let running = 0;
+    let maxRunning = 0;
+    drainOutboxMock.mockImplementation(async () => {
+      running++;
+      maxRunning = Math.max(maxRunning, running);
+      if (drainOutboxMock.mock.calls.length === 1) await first.promise;
+      running--;
+      return { sent: 1, stuck:0, failed: 0, skippedNoSettings: false };
+    });
+
+    const a = runSyncPass();
+    const b = runSyncPass(); // e.g. a save during the pass
+    const c = runSyncPass(); // e.g. the Electron poll during the same pass
+    expect(b).toBe(c);
+    first.resolve();
+    await Promise.all([a, b, c]);
+
+    expect(drainOutboxMock).toHaveBeenCalledTimes(2);
+    expect(maxRunning).toBe(1);
+  });
+
+  it("still runs the follow-up when the running pass fails", async () => {
+    const first = deferred();
+    drainOutboxMock
+      .mockImplementationOnce(async () => {
+        await first.promise;
+        return { sent: 0, stuck:0, failed: 0, skippedNoSettings: false };
+      })
+      .mockResolvedValue({ sent: 1, stuck:0, failed: 0, skippedNoSettings: false });
+
+    const a = runSyncPass();
+    const b = runSyncPass();
+    first.reject(new Error("backend down"));
+
+    await expect(a).rejects.toThrow("backend down");
+    await expect(b).resolves.toMatchObject({ sent: 1 });
+    expect(drainOutboxMock).toHaveBeenCalledTimes(2);
+  });
+
+  it("starts a fresh pass once the previous one has finished", async () => {
+    await runSyncPass();
+    await runSyncPass();
+
+    expect(drainOutboxMock).toHaveBeenCalledTimes(2);
   });
 });

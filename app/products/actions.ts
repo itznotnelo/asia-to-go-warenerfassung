@@ -4,12 +4,14 @@ import { z } from "zod";
 import { Prisma } from "@/lib/generated/prisma/client";
 import { prisma } from "@/lib/prisma";
 import { toProductSummary, type ProductSummary } from "@/lib/product-summary";
-import { computeDataComplete, isProductComplete, productInputSchema } from "@/lib/product-schema";
-import { storeUploadedImage } from "@/lib/images";
-import { enqueueProductDeleteSync, enqueueProductSync } from "@/lib/sync/outbox";
+import { allergensConfirmedAtFor, computeDataComplete, isProductComplete, updateProductSchema } from "@/lib/product-schema";
+import { removeStoredImage, storeUploadedImage } from "@/lib/images";
+import { imagesReplacedBy } from "@/lib/image-replace";
+import { enqueueProductSync } from "@/lib/sync/outbox";
+import { archiveProduct, purgeArchivedProduct, restoreArchivedProduct, type ArchiveResult } from "@/lib/product-archive";
 import { triggerBackgroundDrain } from "@/lib/sync/runner";
-
-const updateProductSchema = productInputSchema.extend({ id: z.string().min(1) });
+import { applyBulkUpdate, type BulkUpdateResult } from "@/lib/bulk-update";
+import { CATEGORY_ERROR, isAssignableCategory } from "@/lib/category-guard";
 
 type UpdateProductResult =
   | { ok: true; product: ProductSummary }
@@ -22,12 +24,17 @@ export async function updateProduct(rawInput: unknown): Promise<UpdateProductRes
     return { ok: false, message: "Bitte Eingaben prüfen.", fieldErrors: parsed.error.flatten().fieldErrors };
   }
   const { id, ...input } = parsed.data;
+  if (!(await isAssignableCategory(input.categoryId))) {
+    return { ok: false, message: CATEGORY_ERROR, fieldErrors: { categoryId: [CATEGORY_ERROR] } };
+  }
 
   const existing = await prisma.product.findUnique({ where: { id }, include: { images: true } });
   if (!existing) {
     return { ok: false, message: "Artikel nicht gefunden." };
   }
-  const dataComplete = computeDataComplete(input, existing.images.length > 0);
+  // An edit without a kind (older client) keeps the stored one.
+  const kind = input.kind ?? existing.kind;
+  const dataComplete = computeDataComplete({ ...input, kind }, existing.images.length > 0);
 
   try {
     const product = await prisma.product.update({
@@ -41,15 +48,20 @@ export async function updateProduct(rawInput: unknown): Promise<UpdateProductRes
         categoryId: input.categoryId,
         priceRappen: input.priceRappen,
         vatRate: input.vatRate,
+        kind,
         unitType: input.unitType,
         contentAmount: input.contentAmount ?? null,
         contentUnit: input.contentUnit ?? null,
         storageType: input.storageType,
         ingredientsDe: input.ingredientsDe || null,
         allergens: input.allergens,
+        traces: input.traces,
+        allergensConfirmedAt: allergensConfirmedAtFor(input, existing, new Date()),
         notes: input.notes || null,
         dataSource: input.dataSource,
         dataComplete,
+        // The edit form doesn't send nutrition, so only write it when it was sent.
+        ...(input.nutrition !== undefined && { nutrition: input.nutrition }),
       },
     });
     // Ticket #1369: jedes Speichern stösst "Auf Website veröffentlichen" an -
@@ -110,14 +122,27 @@ export async function uploadProductImage(formData: FormData): Promise<UploadImag
     return { ok: false, message: "Bild konnte nicht verarbeitet werden." };
   }
 
-  await prisma.productImage.create({
-    data: { productId: product.id, type, path: stored.path, width: stored.width, height: stored.height },
-  });
+  // A retaken Vorderseite/Zutaten/Nährwerte photo replaces the old row in one
+  // transaction, so the shop payload never carries both. The new row has no
+  // r2Key yet, so the next sync pass uploads it and re-publishes the article.
+  const replaced = imagesReplacedBy(
+    await prisma.productImage.findMany({ where: { productId: product.id }, select: { id: true, type: true, path: true } }),
+    type,
+  );
+  await prisma.$transaction([
+    prisma.productImage.deleteMany({ where: { id: { in: replaced.map((image) => image.id) } } }),
+    prisma.productImage.create({
+      data: { productId: product.id, type, path: stored.path, width: stored.width, height: stored.height },
+    }),
+  ]);
+  for (const image of replaced) {
+    if (image.path !== stored.path) await removeStoredImage(image.path);
+  }
 
   let dataComplete = product.dataComplete;
   if (!dataComplete) {
     const summary = toProductSummary(product);
-    dataComplete = isProductComplete(summary, true);
+    dataComplete = isProductComplete({ ...summary, kind: product.kind }, true);
     if (dataComplete) {
       await prisma.product.update({ where: { id: product.id }, data: { dataComplete: true } });
     }
@@ -132,48 +157,25 @@ export async function uploadProductImage(formData: FormData): Promise<UploadImag
   return { ok: true, path: stored.path, dataComplete };
 }
 
-const bulkUpdateSchema = z.object({
-  ids: z.array(z.string().min(1)).min(1),
-  categoryId: z.string().min(1).optional(),
-  vatRate: z.number().optional(),
-  isAvailable: z.boolean().optional(),
-});
-
 /** Bulk-Aktionen aus der Artikelliste: Kategorie setzen, MwSt setzen, Verfügbarkeit umschalten. */
-export async function bulkUpdateProducts(
-  rawInput: unknown,
-): Promise<{ ok: true; count: number } | { ok: false; message: string }> {
-  const parsed = bulkUpdateSchema.safeParse(rawInput);
-  if (!parsed.success) {
-    return { ok: false, message: "Bitte Eingaben prüfen." };
-  }
-  const { ids, ...patch } = parsed.data;
-  if (Object.keys(patch).length === 0) {
-    return { ok: false, message: "Keine Änderung ausgewählt." };
-  }
-
-  const result = await prisma.product.updateMany({ where: { id: { in: ids } }, data: patch });
-
-  // isAvailable ist Teil der Shop-Regel (siehe lib/sync/build-ops.ts) - eine
-  // Bulk-Verfügbarkeitsänderung muss dieselbe Veröffentlichung auslösen wie
-  // das einzelne Checkbox-Toggle in quickUpdateProduct().
-  if ("isAvailable" in patch) {
-    for (const id of ids) {
-      await enqueueProductSync(id);
-    }
-    triggerBackgroundDrain();
-  }
-
-  return { ok: true, count: result.count };
+export async function bulkUpdateProducts(rawInput: unknown): Promise<BulkUpdateResult> {
+  return applyBulkUpdate(rawInput);
 }
 
-export async function deleteProduct(id: string): Promise<{ ok: true } | { ok: false; message: string }> {
+/** "Löschen": nur archivieren (review should #34), die Website folgt nach der Karenzzeit - siehe lib/product-archive.ts. */
+export async function deleteProduct(id: string): Promise<ArchiveResult> {
   if (!id) return { ok: false, message: "Ungültige ID." };
-  // Vor dem lokalen Löschen anmelden - danach gibt es den Artikel nicht mehr,
-  // um Kategorie/Felder für einen Upsert nachzuschlagen, aber ein reiner
-  // delete-Op braucht nur die id (siehe lib/sync/outbox.ts).
-  await enqueueProductDeleteSync(id);
-  await prisma.product.delete({ where: { id } });
-  triggerBackgroundDrain();
-  return { ok: true };
+  return archiveProduct(id);
+}
+
+/** "Rückgängig" / "Wiederherstellen" eines gelöschten Artikels. */
+export async function restoreProduct(id: string): Promise<ArchiveResult> {
+  if (!id) return { ok: false, message: "Ungültige ID." };
+  return restoreArchivedProduct(id);
+}
+
+/** "Endgültig löschen": nur für gelöschte Artikel nach der Karenzzeit. */
+export async function purgeProduct(id: string): Promise<ArchiveResult> {
+  if (!id) return { ok: false, message: "Ungültige ID." };
+  return purgeArchivedProduct(id);
 }

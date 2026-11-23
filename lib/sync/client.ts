@@ -1,5 +1,23 @@
 import "server-only";
-import type { PendingOrder, PublishOp, ShopSyncSettingsValue } from "./types";
+import type { PublishOp, ShopSyncSettingsValue } from "./types";
+import { parseUploadResponse } from "./validate";
+
+// A hung backend call would otherwise hold the single-flight sync pass
+// (runner.ts) forever and stall every later sync. Uploads get more time
+// because a phone photo over a slow shop line can legitimately take a while.
+export const SYNC_FETCH_TIMEOUT_MS = 15_000;
+export const IMAGE_UPLOAD_TIMEOUT_MS = 60_000;
+
+/** A non-ok backend answer, with the status so the drain can tell a retryable outage from a rejected op. */
+export class SyncHttpError extends Error {
+  readonly status: number;
+
+  constructor(message: string, status: number) {
+    super(message);
+    this.name = "SyncHttpError";
+    this.status = status;
+  }
+}
 
 function authHeaders(settings: ShopSyncSettingsValue): Record<string, string> {
   return {
@@ -18,9 +36,10 @@ export async function publishOps(settings: ShopSyncSettingsValue, ops: PublishOp
     method: "POST",
     headers: { ...authHeaders(settings), "content-type": "application/json" },
     body: JSON.stringify({ ops }),
+    signal: AbortSignal.timeout(SYNC_FETCH_TIMEOUT_MS),
   });
   if (!response.ok) {
-    throw new Error(`publish failed: HTTP ${response.status}`);
+    throw new SyncHttpError(`publish failed: HTTP ${response.status}`, response.status);
   }
 }
 
@@ -41,29 +60,37 @@ export async function uploadImageToBackend(
     method: "POST",
     headers: { ...authHeaders(settings), "content-type": contentType, "x-product-id": productId, "x-image-type": type },
     body: new Blob([arrayBuffer], { type: contentType }),
+    signal: AbortSignal.timeout(IMAGE_UPLOAD_TIMEOUT_MS),
   });
   if (!response.ok) {
     throw new Error(`image upload failed: HTTP ${response.status}`);
   }
-  const data = (await response.json()) as { r2Key: string };
-  return data.r2Key;
+  // The key is published to the webshop, so it has to look like one the backend builds (#3071).
+  return parseUploadResponse(await response.json(), productId);
 }
 
-/** Only ever returns *paid* orders (filtered server-side) - see atg-shop-backend's handlePendingOrders. */
-export async function fetchPendingOrders(settings: ShopSyncSettingsValue): Promise<PendingOrder[]> {
-  const response = await fetch(apiUrl(settings, "/orders/pending"), { headers: authHeaders(settings) });
+/**
+ * Only ever returns *paid* orders (filtered server-side) - see atg-shop-backend's handlePendingOrders.
+ * Returns the raw `items` value; orders.ts validates each order with Zod.
+ */
+export async function fetchPendingOrders(settings: ShopSyncSettingsValue): Promise<unknown> {
+  const response = await fetch(apiUrl(settings, "/orders/pending"), {
+    headers: authHeaders(settings),
+    signal: AbortSignal.timeout(SYNC_FETCH_TIMEOUT_MS),
+  });
   if (!response.ok) {
     throw new Error(`fetch pending orders failed: HTTP ${response.status}`);
   }
-  const data = (await response.json()) as { items: PendingOrder[] };
-  return data.items;
+  const data = (await response.json()) as { items?: unknown } | null;
+  return data?.items;
 }
 
 /** Idempotent on the backend - safe to call again for an order already acked. */
 export async function ackOrder(settings: ShopSyncSettingsValue, orderId: string): Promise<void> {
-  const response = await fetch(apiUrl(settings, `/orders/${orderId}/ack`), {
+  const response = await fetch(apiUrl(settings, `/orders/${encodeURIComponent(orderId)}/ack`), {
     method: "POST",
     headers: authHeaders(settings),
+    signal: AbortSignal.timeout(SYNC_FETCH_TIMEOUT_MS),
   });
   if (!response.ok) {
     throw new Error(`ack order failed: HTTP ${response.status}`);

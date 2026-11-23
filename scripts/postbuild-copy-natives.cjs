@@ -78,6 +78,22 @@ const imgDest = path.join(fixedDir, "@img", path.basename(imgRoot));
 copyDereferenced(imgRoot, imgDest);
 console.log("Added", imgPlatformPkg, "->", imgDest);
 
+// On Linux and macOS libvips ships as its own package next to the binding
+// (on Windows it sits inside @img/sharp-win32-*), and sharp loads it by
+// file name, so the tracer misses it as well.
+const libvipsPkg = `@img/sharp-libvips-${process.platform}-${process.arch}`;
+let libvipsRoot = null;
+try {
+  libvipsRoot = findOnDisk(sharpDir, libvipsPkg);
+} catch {
+  // not a separate package on this platform
+}
+if (libvipsRoot) {
+  const libvipsDest = path.join(fixedDir, "@img", path.basename(libvipsRoot));
+  copyDereferenced(libvipsRoot, libvipsDest);
+  console.log("Added", libvipsPkg, "->", libvipsDest);
+}
+
 fs.rmSync(nodeModulesDir, { recursive: true, force: true });
 fs.renameSync(fixedDir, nodeModulesDir);
 console.log("Rebuilt", nodeModulesDir, "with real files (no symlinks)");

@@ -2,14 +2,17 @@ import { loadPendingOutboxCount, loadShopSyncSettings, loadStuckOutboxCount } fr
 import { SettingsForm } from "./settings-form";
 import { BackupSection } from "@/components/backup-section";
 import { SyncPausedBox } from "@/components/sync-paused-box";
+import { readSafetyBuffer } from "@/lib/stock/settings";
+import { SafetyBufferForm } from "./safety-buffer-form";
 
 export const dynamic = "force-dynamic";
 
 export default async function SettingsPage() {
-  const [settings, pendingCount, stuckCount] = await Promise.all([
+  const [settings, pendingCount, stuckCount, safetyBuffer] = await Promise.all([
     loadShopSyncSettings(),
     loadPendingOutboxCount(),
     loadStuckOutboxCount(),
+    readSafetyBuffer(),
   ]);
 
   return (
@@ -43,6 +46,8 @@ export default async function SettingsPage() {
       </p>
       <SyncPausedBox />
       <SettingsForm initialSettings={settings} initialPendingCount={pendingCount} initialStuckCount={stuckCount} />
+      <h2 className="text-lg font-semibold">Lager und Webshop</h2>
+      <SafetyBufferForm initial={safetyBuffer} />
     </div>
   );
 }

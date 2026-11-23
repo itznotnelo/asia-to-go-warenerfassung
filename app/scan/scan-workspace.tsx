@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { useEffect, useReducer, useRef, useState } from "react";
 import { useBarcodeScanner, type ScanResult } from "@/hooks/use-barcode-scanner";
 import { initialScanState, scanReducer } from "./scan-reducer";
@@ -27,7 +28,14 @@ const SCAN_HINT_MS = 4000;
 const SCAN_REJECTED_HINT = "Scan nicht erkannt. Bitte nochmals scannen oder den Barcode unten eintippen.";
 const SCAN_BLOCKED_HINT = "Erst speichern oder verwerfen, dann scannen.";
 
-export function ScanWorkspace({ categories }: { categories: CategoryOption[] }) {
+/** Came from a stock scan mode with an unknown barcode: capture it, then go back. */
+export interface ScanReturnTo {
+  href: string;
+  ean: string;
+}
+
+export function ScanWorkspace({ categories, returnTo = null }: { categories: CategoryOption[]; returnTo?: ScanReturnTo | null }) {
+  const router = useRouter();
   const [state, dispatch] = useReducer(scanReducer, initialScanState);
   const [saving, setSaving] = useState(false);
   const [saveError, setSaveError] = useState<string[] | null>(null);
@@ -64,6 +72,16 @@ export function ScanWorkspace({ categories }: { categories: CategoryOption[] }) 
 
   // A too-slow scan only shows a hint; it never throws away an open form.
   const { submitManualBarcode } = useBarcodeScanner({ onScan: handleScan, onRejectedScan: () => setScanHint(SCAN_REJECTED_HINT) });
+
+  // Start right away with the barcode the stock scan mode could not find.
+  const startedReturn = useRef(false);
+  useEffect(() => {
+    if (!returnTo || startedReturn.current) return;
+    startedReturn.current = true;
+    void handleScan({ barcode: returnTo.ean, valid: true });
+    // handleScan is a fresh closure each render; this must run once only.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [returnTo]);
 
   useEffect(() => {
     if (!scanHint) return;
@@ -124,6 +142,9 @@ export function ScanWorkspace({ categories }: { categories: CategoryOption[] }) 
     setLastSaved(input);
     setLastSavedProduct(result.product);
     dispatch({ type: "saved", message: `${result.product.nameDe} gespeichert (${result.product.sku})` });
+    if (returnTo && result.product.ean === returnTo.ean) {
+      router.push(`${returnTo.href}?ean=${encodeURIComponent(returnTo.ean)}`);
+    }
   }
 
   // Restored articles go straight to the quick view, so the scan ends where a normal hit would.
@@ -184,6 +205,14 @@ export function ScanWorkspace({ categories }: { categories: CategoryOption[] }) 
 
   return (
     <div className="mx-auto flex w-full max-w-2xl flex-col gap-6 px-4 py-10">
+      {returnTo && (
+        <p className="rounded-md border border-primary/50 bg-primary/10 px-4 py-3 text-sm">
+          Neuer Artikel aus dem Lager-Modus. Nach dem Speichern geht es automatisch zurück.{" "}
+          <Link href={returnTo.href} className="font-medium underline underline-offset-2">
+            Zurück ohne zu erfassen
+          </Link>
+        </p>
+      )}
       <ScanStatus state={state} />
 
       {scanHint && (

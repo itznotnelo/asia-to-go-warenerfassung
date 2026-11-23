@@ -66,6 +66,35 @@ enum ShopOrderStatus {
   cancelled
 }
 
+// Stock ledger (v0.3): every stock change is one StockMovement row, see
+// lib/stock/ledger.ts. Quantities are signed, in the article's stock unit
+// (lib/stock/units.ts): pieces for prepacked goods, g / ml for loose goods.
+enum StockMovementType {
+  receipt
+  sale_shop
+  sale_web
+  count_correction
+  waste
+  return_to_supplier
+  manual
+}
+
+// Why stock was written off (type waste). Expired = past its MHD.
+enum WasteReason {
+  expired
+  damaged
+  spoiled
+  other
+}
+
+// Goods receipts and stocktakes are drafts until booked; only booking
+// writes StockMovement rows.
+enum StockDocumentStatus {
+  open
+  booked
+  cancelled
+}
+
 // Same two values the backend accepts (atg-shop-backend validateOrderInput).
 enum FulfilmentType {
   pickup
@@ -113,8 +142,25 @@ model Product {
   // pre-fill (hard rule 5). Null = not checked, so the shop must not publish.
   allergensConfirmedAt DateTime?
   nutrition     Json?
+  // For an article with stock tracking (stockQty not null) this is derived
+  // from stock (stockQty > StockSettings.shopSafetyBuffer) and rewritten on
+  // every movement, see lib/stock/availability.ts. Without tracking it stays
+  // the manual "Verfügbar" flag.
   isAvailable   Boolean     @default(true)
+  // null = stock not tracked for this article. Otherwise the cached sum of
+  // its StockMovement.quantity, updated in the same transaction as every
+  // movement (lib/stock/ledger.ts). Stock unit: lib/stock/units.ts.
   stockQty      Int?
+  // Reorder point and usual order quantity, in stock units. Null = no reorder rule.
+  minStock      Int?
+  reorderQty    Int?
+  // Stock units per carton/pack as delivered (24 cans per tray). 1 = single pieces.
+  packSize      Int         @default(1)
+  // Last purchase price (EK) excl. MwSt in Rappen per Stück, or per kg / l
+  // for loose goods. Updated by every goods receipt that carries a price.
+  purchasePriceRappen Int?
+  defaultSupplierId String?
+  defaultSupplier   Supplier? @relation("ProductDefaultSupplier", fields: [defaultSupplierId], references: [id], onDelete: SetNull)
   dataSource    DataSource
   // Computed in application code (not a generated DB column) whenever a
   // product is written — see lib/pricing.ts and the swiss-food-compliance
@@ -130,10 +176,15 @@ model Product {
   images        ProductImage[]
   scanLogs      ScanLog[]
   orderItems    ShopOrderItem[]
+  stockMovements StockMovement[]
+  lots          StockLot[]
+  receiptLines  GoodsReceiptLine[]
+  stocktakeLines StocktakeLine[]
   createdAt     DateTime    @default(now())
   updatedAt     DateTime    @updatedAt
 
   @@index([categoryId])
+  @@index([defaultSupplierId])
   @@index([nameOriginal])
   @@index([isAvailable])
   @@index([dataComplete])
@@ -236,6 +287,7 @@ model ShopOrder {
   createdAt      DateTime        @default(now())
   updatedAt      DateTime        @updatedAt
   items          ShopOrderItem[]
+  stockMovements StockMovement[]
 }
 
 model ShopOrderItem {
@@ -255,4 +307,165 @@ model ShopOrderItem {
   lineTotalRappen Int?
 
   @@index([orderId])
+}
+
+model Supplier {
+  id             String    @id @default(cuid())
+  name           String
+  contactName    String?
+  phone          String?
+  email          String?
+  // The shop's own customer number at this supplier, for the order message.
+  customerNumber String?
+  notes          String?
+  // Soft delete: old movements and lots keep their supplier.
+  archivedAt     DateTime?
+  products       Product[] @relation("ProductDefaultSupplier")
+  lots           StockLot[]
+  movements      StockMovement[]
+  receipts       GoodsReceipt[]
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+
+  @@index([archivedAt])
+}
+
+// One delivered batch of an article. Its quantity is not stored: it is the
+// sum of the movements linked to it (receipt, lot write-off, undo). Sales are
+// not linked to a lot; lib/stock/lots.ts attributes the remaining stock FEFO.
+model StockLot {
+  id         String          @id @default(cuid())
+  productId  String
+  product    Product         @relation(fields: [productId], references: [id], onDelete: Cascade)
+  supplierId String?
+  supplier   Supplier?       @relation(fields: [supplierId], references: [id], onDelete: SetNull)
+  batchCode  String?
+  // MHD / best before (date only).
+  expiryDate DateTime?       @db.Date
+  receivedAt DateTime        @default(now())
+  movements  StockMovement[]
+  createdAt  DateTime        @default(now())
+
+  @@index([productId])
+  @@index([expiryDate])
+}
+
+// The stock ledger. Append-only: an undo is a new movement pointing at the
+// one it reverses (reversesId), never an edit or delete.
+model StockMovement {
+  id             String            @id @default(cuid())
+  productId      String
+  product        Product           @relation(fields: [productId], references: [id], onDelete: Cascade)
+  type           StockMovementType
+  // Signed, in stock units: + into stock, - out of stock.
+  quantity       Int
+  // Product stock right after this movement (running balance).
+  stockAfter     Int
+  // EK excl. MwSt per stock-unit price basis (see purchasePriceRappen); receipts only.
+  unitCostRappen Int?
+  wasteReason    WasteReason?
+  note           String?
+  supplierId     String?
+  supplier       Supplier?         @relation(fields: [supplierId], references: [id], onDelete: SetNull)
+  lotId          String?
+  lot            StockLot?         @relation(fields: [lotId], references: [id], onDelete: SetNull)
+  shopOrderId    String?
+  shopOrder      ShopOrder?        @relation(fields: [shopOrderId], references: [id], onDelete: SetNull)
+  goodsReceiptId String?
+  goodsReceipt   GoodsReceipt?     @relation(fields: [goodsReceiptId], references: [id], onDelete: SetNull)
+  stocktakeId    String?
+  stocktake      Stocktake?        @relation(fields: [stocktakeId], references: [id], onDelete: SetNull)
+  reversesId     String?           @unique
+  reverses       StockMovement?    @relation("StockMovementReversal", fields: [reversesId], references: [id], onDelete: SetNull)
+  reversedBy     StockMovement?    @relation("StockMovementReversal")
+  createdAt      DateTime          @default(now())
+
+  @@index([productId, createdAt])
+  @@index([createdAt])
+  @@index([type, createdAt])
+  @@index([lotId])
+  @@index([shopOrderId])
+  @@index([goodsReceiptId])
+  @@index([stocktakeId])
+  @@index([supplierId])
+}
+
+// Wareneingang: a delivery, scanned line by line, booked in one transaction.
+model GoodsReceipt {
+  id           String              @id @default(cuid())
+  supplierId   String?
+  supplier     Supplier?           @relation(fields: [supplierId], references: [id], onDelete: SetNull)
+  status       StockDocumentStatus @default(open)
+  // Lieferschein / invoice number as printed by the supplier.
+  deliveryNote String?
+  note         String?
+  bookedAt     DateTime?
+  lines        GoodsReceiptLine[]
+  movements    StockMovement[]
+  createdAt    DateTime            @default(now())
+  updatedAt    DateTime            @updatedAt
+
+  @@index([status])
+}
+
+model GoodsReceiptLine {
+  id             String       @id @default(cuid())
+  receiptId      String
+  receipt        GoodsReceipt @relation(fields: [receiptId], references: [id], onDelete: Cascade)
+  productId      String
+  product        Product      @relation(fields: [productId], references: [id], onDelete: Cascade)
+  // packs x packSize = quantity (stock units).
+  packs          Int
+  packSize       Int
+  quantity       Int
+  unitCostRappen Int?
+  expiryDate     DateTime?    @db.Date
+  batchCode      String?
+  createdAt      DateTime     @default(now())
+
+  @@index([receiptId])
+  @@index([productId])
+}
+
+// Inventur: counts per article, booked as count_correction movements.
+// Partial counts (one shelf, one category) are fine: only counted articles change.
+model Stocktake {
+  id         String              @id @default(cuid())
+  title      String
+  // Optional scope, only used to list what is still to count.
+  categoryId String?
+  status     StockDocumentStatus @default(open)
+  note       String?
+  bookedAt   DateTime?
+  lines      StocktakeLine[]
+  movements  StockMovement[]
+  createdAt  DateTime            @default(now())
+  updatedAt  DateTime            @updatedAt
+
+  @@index([status])
+}
+
+model StocktakeLine {
+  id          String    @id @default(cuid())
+  stocktakeId String
+  stocktake   Stocktake @relation(fields: [stocktakeId], references: [id], onDelete: Cascade)
+  productId   String
+  product     Product   @relation(fields: [productId], references: [id], onDelete: Cascade)
+  countedQty  Int
+  // Stock the app expected when this line was (last) counted. Booking adds
+  // countedQty - expectedQty to the stock at booking time, so sales between
+  // counting and booking are not wiped out.
+  expectedQty Int
+  countedAt   DateTime  @default(now())
+
+  @@unique([stocktakeId, productId])
+  @@index([productId])
+}
+
+// Single row (id always 1).
+model StockSettings {
+  id               Int      @id @default(1)
+  // A tracked article shows in the webshop only while stock > this buffer.
+  shopSafetyBuffer Int      @default(1)
+  updatedAt        DateTime @updatedAt
 }

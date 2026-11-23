@@ -1,5 +1,7 @@
 import "server-only";
 import { prisma } from "@/lib/prisma";
+import { getSafetyBuffer } from "@/lib/stock/ledger";
+import { bookWebOrderSales } from "@/lib/stock/web-orders";
 import { ackOrder, fetchPendingOrders } from "./client";
 import { parsePendingOrders, type ValidPendingOrder } from "./order-schema";
 import { hasShopSyncSettings, type ShopSyncSettingsValue } from "./types";
@@ -9,7 +11,8 @@ async function importOneOrder(settings: ShopSyncSettingsValue, order: ValidPendi
   if (existing) {
     // Already imported in an earlier run - the backend retried the pending
     // list before our previous ack landed. Create and stock decrement were
-    // committed together, so just ack again (idempotent) and stop.
+    // committed together with its stock movements, so just ack again
+    // (idempotent) and stop.
     await ackOrder(settings, order.id);
     return;
   }
@@ -40,7 +43,7 @@ async function importOneOrder(settings: ShopSyncSettingsValue, order: ValidPendi
       };
     });
 
-    await tx.shopOrder.create({
+    const created = await tx.shopOrder.create({
       data: {
         id: order.id,
         customerName: order.customerName,
@@ -54,16 +57,10 @@ async function importOneOrder(settings: ShopSyncSettingsValue, order: ValidPendi
       },
     });
 
-    // Atomic decrement, then floor at 0 for an over-sold item. `stockQty`
-    // null means "not tracked" and is never touched.
-    for (const item of items) {
-      if (!item.productId) continue;
-      await tx.product.updateMany({
-        where: { id: item.productId, stockQty: { not: null } },
-        data: { stockQty: { decrement: item.qty } },
-      });
-      await tx.product.updateMany({ where: { id: item.productId, stockQty: { lt: 0 } }, data: { stockQty: 0 } });
-    }
+    // One sale_web movement per line of a tracked article (v0.3 ledger),
+    // in this transaction. Untracked articles (stockQty null) are not
+    // touched. An over-sold item goes negative and is flagged, not floored.
+    await bookWebOrderSales(tx, created.id, items, await getSafetyBuffer(tx));
   });
 
   // Only after commit: if anything above threw, the backend keeps the order

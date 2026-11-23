@@ -2,7 +2,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const txMock = {
   shopOrder: { create: vi.fn() },
-  product: { findMany: vi.fn(), updateMany: vi.fn() },
+  product: { findMany: vi.fn() },
 };
 const prismaMock = {
   shopOrder: { findUnique: vi.fn() },
@@ -11,6 +11,12 @@ const prismaMock = {
 
 vi.mock("@/lib/prisma", () => ({ prisma: prismaMock }));
 vi.mock("server-only", () => ({}));
+
+// The ledger itself is covered by lib/stock/ledger.integration.test.ts; here
+// only that the import books the order's lines in its own transaction.
+const bookWebOrderSalesMock = vi.fn();
+vi.mock("@/lib/stock/web-orders", () => ({ bookWebOrderSales: bookWebOrderSalesMock }));
+vi.mock("@/lib/stock/ledger", () => ({ getSafetyBuffer: vi.fn(async () => 1) }));
 
 const fetchPendingOrdersMock = vi.fn();
 const ackOrderMock = vi.fn();
@@ -40,7 +46,8 @@ beforeEach(() => {
   prismaMock.$transaction.mockClear();
   txMock.shopOrder.create.mockReset().mockResolvedValue({});
   txMock.product.findMany.mockReset().mockResolvedValue([{ id: "prod_1", sku: "ASIA-00007", vatRate: 2.6 }]);
-  txMock.product.updateMany.mockReset().mockResolvedValue({ count: 1 });
+  txMock.shopOrder.create.mockImplementation(async ({ data }: { data: { id: string } }) => ({ id: data.id }));
+  bookWebOrderSalesMock.mockReset().mockResolvedValue(1);
   fetchPendingOrdersMock.mockReset();
   ackOrderMock.mockReset().mockResolvedValue(undefined);
 });
@@ -53,7 +60,7 @@ describe("importPendingOrders", () => {
     expect(fetchPendingOrdersMock).not.toHaveBeenCalled();
   });
 
-  it("creates the order with its original time, decrements stock atomically with a 0 floor, then acks", async () => {
+  it("creates the order with its original time, books its stock in the same transaction, then acks", async () => {
     fetchPendingOrdersMock.mockResolvedValue([pendingOrder()]);
 
     const result = await importPendingOrders(settings);
@@ -78,14 +85,7 @@ describe("importPendingOrders", () => {
         },
       }),
     });
-    expect(txMock.product.updateMany).toHaveBeenNthCalledWith(1, {
-      where: { id: "prod_1", stockQty: { not: null } },
-      data: { stockQty: { decrement: 2 } },
-    });
-    expect(txMock.product.updateMany).toHaveBeenNthCalledWith(2, {
-      where: { id: "prod_1", stockQty: { lt: 0 } },
-      data: { stockQty: 0 },
-    });
+    expect(bookWebOrderSalesMock).toHaveBeenCalledWith(txMock, "order_1", [expect.objectContaining({ productId: "prod_1", qty: 2 })], 1);
     expect(ackOrderMock).toHaveBeenCalledWith(settings, "order_1");
   });
 
@@ -131,10 +131,8 @@ describe("importPendingOrders", () => {
         },
       }),
     });
-    // Only the product that still exists gets a stock update.
-    for (const [call] of txMock.product.updateMany.mock.calls) {
-      expect(call.where.id).toBe("prod_1");
-    }
+    // The deleted product's line has no productId, so it books no stock.
+    expect(bookWebOrderSalesMock.mock.calls[0][2].map((item: { productId: string | null }) => item.productId)).toEqual([null, "prod_1"]);
     expect(ackOrderMock).toHaveBeenCalledWith(settings, "order_1");
   });
 
@@ -151,7 +149,7 @@ describe("importPendingOrders", () => {
 
   it("a crash mid-import (during the stock update) is never acked, later orders still import", async () => {
     fetchPendingOrdersMock.mockResolvedValue([pendingOrder(), pendingOrder({ id: "order_2" })]);
-    txMock.product.updateMany.mockRejectedValueOnce(new Error("connection terminated"));
+    bookWebOrderSalesMock.mockRejectedValueOnce(new Error("connection terminated"));
 
     const result = await importPendingOrders(settings);
 

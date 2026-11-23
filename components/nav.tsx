@@ -7,6 +7,7 @@ import { cn } from "@/lib/utils";
 const LINKS = [
   { href: "/scan", label: "Scannen" },
   { href: "/products", label: "Artikel" },
+  { href: "/stock", label: "Lager" },
   { href: "/orders", label: "Bestellungen" },
   { href: "/dashboard", label: "Fortschritt" },
   { href: "/settings", label: "Einstellungen" },
@@ -17,7 +18,7 @@ export function Nav() {
   const pathname = usePathname();
 
   return (
-    <nav className="flex items-center gap-1 border-b border-border px-4 py-3">
+    <nav className="flex flex-wrap items-center gap-1 border-b border-border px-4 py-3 print:hidden">
       <span className="mr-4 text-sm text-muted-foreground">Asia To Go</span>
       {LINKS.map((link) => {
         const active = pathname === link.href || pathname.startsWith(`${link.href}/`);

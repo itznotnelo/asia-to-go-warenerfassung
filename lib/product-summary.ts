@@ -23,6 +23,8 @@ export interface ProductSummary {
   /** allergensConfirmedAt !== null; a Date would not need to cross the RSC boundary for the form. */
   allergensConfirmed: boolean;
   isAvailable: boolean;
+  /** null = no stock tracking. Optional so older fixtures stay valid; toProductSummary always sets it. */
+  stockQty?: number | null;
   dataSource: DataSource;
   dataComplete: boolean;
   notes: string | null;
@@ -53,6 +55,7 @@ export function toProductSummary(product: Product): ProductSummary {
     traces: product.traces,
     allergensConfirmed: product.allergensConfirmedAt !== null,
     isAvailable: product.isAvailable,
+    stockQty: product.stockQty,
     dataSource: product.dataSource,
     dataComplete: product.dataComplete,
     notes: product.notes,

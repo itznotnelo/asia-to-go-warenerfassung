@@ -33,7 +33,18 @@ export async function applyBulkUpdate(rawInput: unknown): Promise<BulkUpdateResu
     return { ok: false, message: CATEGORY_ERROR };
   }
 
-  const result = await prisma.product.updateMany({ where: { id: { in: ids } }, data: patch });
+  // With stock tracking, shop availability follows the stock (lib/stock/availability.ts):
+  // "verfügbar/nicht verfügbar" only changes articles without tracking.
+  const { isAvailable, ...rest } = patch;
+  let count = 0;
+  if (Object.keys(rest).length > 0) {
+    count = (await prisma.product.updateMany({ where: { id: { in: ids } }, data: rest })).count;
+  }
+  if (isAvailable !== undefined) {
+    const flagged = await prisma.product.updateMany({ where: { id: { in: ids }, stockQty: null }, data: { isAvailable } });
+    count = Math.max(count, flagged.count);
+  }
+  const result = { count };
 
   if (result.count > 0) {
     for (const id of ids) {

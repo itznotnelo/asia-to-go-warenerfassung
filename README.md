@@ -58,6 +58,10 @@ pnpm db:seed
 - **`/products`** — Artikelliste mit Suche, Filtern (Kategorie, Lagerung,
   Quelle, Vollständigkeit), Inline-Bearbeitung von Preis/Verfügbarkeit und
   Bulk-Aktionen. **`/products/[id]`** ist die volle Detailseite inkl. Löschen.
+- **`/stock`** — Lager (v0.3): Übersicht (Lagerwert zu EK, wenig Bestand,
+  MHD, Ladenhüter, letzte Buchungen), Wareneingang, Verkauf erfassen,
+  Inventur, Haltbarkeit, Nachbestellen, Inventarliste (CSV unter
+  `/api/export/inventory?date=YYYY-MM-DD`), Buchungen, Lieferanten.
 - **`/dashboard`** — Fortschritt: erfasste Artikel, Anteil `dataComplete`,
   OFF-Trefferquote aus dem `ScanLog`, Artikel pro Kategorie, Arbeitsvorrat der
   unvollständigen Artikel. Von dort aus JSON-/CSV-Export aller Artikel

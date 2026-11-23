@@ -73,6 +73,8 @@ jobs:
         working-directory: electron/app
         run: npm ci
 
+      # Includes lib/stock/ledger.integration.test.ts, which migrates its own
+      # throwaway schema in the Postgres service above (stock ledger on a real DB).
       - name: Unit tests
         run: pnpm test
 
@@ -107,7 +109,10 @@ jobs:
             sleep 1
           done
           fail=0
-          for route in / /scan /products /orders /settings /dashboard /api/export; do
+          for route in / /scan /products /orders /settings /dashboard /api/export \
+            /stock /stock/receipts /stock/sale /stock/counts /stock/expiry /stock/reorder \
+            /stock/inventory "/stock/inventory?date=2026-12-31" /stock/movements /stock/suppliers \
+            /api/export/inventory; do
             code=$(curl -sS -L -o /dev/null -w '%{http_code}' "http://127.0.0.1:$PORT$route")
             echo "$route -> $code"
             [ "$code" = "200" ] || fail=1

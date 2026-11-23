@@ -34,4 +34,10 @@ describe("ShopReadinessBox", () => {
     const { container } = render(<ShopReadinessBox missing={["image"]} isAvailable archived />);
     expect(container.innerHTML).toBe("");
   });
+
+  it("tells a tracked article without enough stock to receive or correct stock, not to tick a box", () => {
+    render(<ShopReadinessBox missing={[]} isAvailable={false} archived={false} stockTracked />);
+    expect(screen.getByText(/Zu wenig Bestand/)).toBeTruthy();
+    expect(screen.queryByText(/ankreuzen/)).toBeNull();
+  });
 });

@@ -9,6 +9,9 @@ import { ImageUpload } from "./image-upload";
 import { ArchivedPanel, DeleteSection } from "./archive-actions";
 import { ShopReadinessBox } from "@/components/shop-readiness-box";
 import { missingForShop } from "@/lib/shop-readiness";
+import { getProductStockCard } from "@/lib/stock/queries";
+import { supplierOptions } from "@/lib/stock/suppliers";
+import { StockCard } from "./stock-card";
 
 // Grace-period state depends on "now" - never cache this page.
 export const dynamic = "force-dynamic";
@@ -19,7 +22,7 @@ function formatDateTime(date: Date): string {
 
 export default async function ProductDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
-  const [product, categories, images, nextIncomplete] = await Promise.all([
+  const [product, categories, images, nextIncomplete, stockCard, suppliers] = await Promise.all([
     prisma.product.findUnique({ where: { id } }),
     getCategories(),
     prisma.productImage.findMany({ where: { productId: id }, orderBy: { sortOrder: "asc" } }),
@@ -29,6 +32,8 @@ export default async function ProductDetailPage({ params }: { params: Promise<{ 
       orderBy: { updatedAt: "desc" },
       select: { id: true, nameDe: true },
     }),
+    getProductStockCard(id),
+    supplierOptions(),
   ]);
 
   if (!product) notFound();
@@ -45,6 +50,7 @@ export default async function ProductDetailPage({ params }: { params: Promise<{ 
         isAvailable={product.isAvailable}
         archived={product.archivedAt !== null}
         nextIncomplete={nextIncomplete}
+        stockTracked={product.stockQty !== null}
       />
 
       {product.archivedAt && (
@@ -57,6 +63,8 @@ export default async function ProductDetailPage({ params }: { params: Promise<{ 
           gracePeriodOver={isGracePeriodOver(product.archivedAt, new Date())}
         />
       )}
+
+      {stockCard && <StockCard card={stockCard} suppliers={suppliers} />}
 
       <ProductImages images={images} />
       <ImageUpload productId={product.id} />

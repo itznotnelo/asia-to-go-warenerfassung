@@ -1,5 +1,39 @@
 # Asia To Go App: was ist neu
 
+## Version 0.3: das Lager
+
+Oben gibt es jetzt den Menüpunkt **«Lager»**. Die App weiss damit, wie viel von einem Artikel im Laden ist. Jede Änderung am Bestand ist eine Buchung, die man später nachlesen kann.
+
+### So fängst du an
+
+1. **Lieferanten eintragen:** Lager, Lieferanten, «Neuer Lieferant». Name reicht, Telefon und eure Kundennummer helfen beim Bestellen.
+2. **Einmal zählen:** Lager, Inventur, «Zählung starten» (zum Beispiel «Regal 1»). Jeden Artikel scannen. Jeder Scan zählt 1 Stück. Bei einem ganzen Karton die Zahl eintippen und Enter. Am Schluss «Inventur buchen». Erst ab dann führt die App für diese Artikel einen Bestand.
+3. Artikel, die du nie zählst, laufen weiter wie bisher mit dem Häkchen «Verfügbar».
+
+### Jeden Tag
+
+- **Lieferung kommt (Wareneingang):** Lieferant wählen, «Lieferung starten», dann jeden Artikel scannen. Anzahl Karton eintippen, Enter. Stück pro Karton, Einkaufspreis (ohne MwSt) und MHD sind schon ausgefüllt oder freiwillig. Am Schluss «Lieferung einbuchen». Kennt die App einen Barcode nicht, kannst du den Artikel gleich erfassen und kommst danach zurück zur Lieferung.
+- **Verkauf im Laden (Verkauf erfassen):** Solange keine Kasse angeschlossen ist: Artikel scannen, Menge 1 steht schon da, Enter. Mehrere Artikel: einfach weiterscannen, der vorherige wird dabei gebucht. Falsch gescannt? «Rückgängig».
+- **Online-Bestellungen** ziehen den Bestand selbst ab. «Stornieren» bei einer Bestellung bucht die Ware zurück (das Geld zurückzahlen geht nicht über die App).
+
+### Was die App dir zeigt
+
+- **Übersicht:** Wert des Lagers zum Einkaufspreis, was bald leer ist, was bald abläuft, Ladenhüter (60 Tage nichts passiert) und die letzten Buchungen.
+- **Haltbarkeit:** was abgelaufen ist oder in 7 oder 30 Tagen abläuft. «Zuerst verkaufen» zeigt, welche Lieferung nach vorne ins Regal gehört. «Abschreiben» bucht den Rest weg, mit Grund.
+- **Nachbestellen:** alles am oder unter dem Meldebestand, pro Lieferant, mit Bestellmenge in Karton. «Bestelltext kopieren» und selbst per WhatsApp oder Mail schicken. Die App schickt nie etwas. Drucken geht auch.
+- **Inventarliste:** für den Jahresabschluss. Stichtag wählen (zum Beispiel 31.12.), dann drucken oder «Excel (CSV)».
+- **Im Artikel** gibt es den Block «Lager»: Bestand, Marge, Lieferungen mit MHD, die letzten Buchungen und die Knöpfe Bestand korrigieren, Abschreiben, Retour an Lieferant. Unter «Einstellungen» im Block stellst du Meldebestand, Bestellmenge, Stück pro Karton, Einkaufspreis und Lieferant ein.
+
+### Webshop
+
+Hat ein Artikel einen Bestand, entscheidet der Bestand, ob er online sichtbar ist: nur solange mehr als 1 Stück da ist. So wird das letzte Stück nicht online verkauft, wenn es vielleicht schon jemand im Laden in der Hand hat. Die Zahl änderst du unter Einstellungen, «Lager und Webshop». Das Häkchen «Verfügbar» gibt es bei solchen Artikeln nicht mehr.
+
+### Gut zu wissen
+
+- Bestand unter null ist erlaubt (die Ware war ja da), die App zeigt ihn rot. Dann nachzählen und «Bestand korrigieren».
+- Jede Buchung bleibt gespeichert. «Rückgängig» macht eine Gegenbuchung, es wird nichts gelöscht. Rückgängig geht nur bei der letzten Buchung eines Artikels.
+- Die tägliche Datensicherung enthält alles, auch Lager, Lieferanten und Buchungen.
+
 ## Das musst du einmal tun
 
 **Allergene bei jedem Artikel bestätigen.** Im Artikel gibt es jetzt das Häkchen «Allergene geprüft». Artikel ohne Häkchen erscheinen nicht mehr im Shop. Das gilt auch für Artikel, die schon online sind: Sie verschwinden aus dem Shop, bis du die Allergene angeschaut und das Häkchen gesetzt hast.

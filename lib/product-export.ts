@@ -1,7 +1,7 @@
 import type { Category, Product } from "@/lib/generated/prisma/client";
 
 // Flacher, backup-tauglicher Schnitt durch Product — jedes Schemafeld drin,
-// auch die in der UI noch ungenutzten (nameEn, stockQty), da ein Backup
+// auch die in der UI noch ungenutzten (nameEn), da ein Backup
 // verlustfrei sein soll.
 export interface ProductExportRow {
   id: string;
@@ -25,6 +25,11 @@ export interface ProductExportRow {
   allergensConfirmedAt: string;
   isAvailable: boolean;
   stockQty: number | "";
+  minStock: number | "";
+  reorderQty: number | "";
+  packSize: number;
+  purchasePriceRappen: number | "";
+  defaultSupplierId: string;
   dataSource: string;
   dataComplete: boolean;
   notes: string;
@@ -55,6 +60,11 @@ export function toExportRow(product: Product & { category: Category }): ProductE
     allergensConfirmedAt: product.allergensConfirmedAt?.toISOString() ?? "",
     isAvailable: product.isAvailable,
     stockQty: product.stockQty ?? "",
+    minStock: product.minStock ?? "",
+    reorderQty: product.reorderQty ?? "",
+    packSize: product.packSize,
+    purchasePriceRappen: product.purchasePriceRappen ?? "",
+    defaultSupplierId: product.defaultSupplierId ?? "",
     dataSource: product.dataSource,
     dataComplete: product.dataComplete,
     notes: product.notes ?? "",

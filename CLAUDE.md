@@ -42,9 +42,26 @@ Jede Schema-Entscheidung ist deshalb eine Shop-Entscheidung.
 Pflicht für: Grundpreis-Berechnung, EAN-Prüfziffer, OFF-Mapping,
 MwSt-Zuordnung, Scanner-Buffer-Logik. Alles andere nach Ermessen.
 
+## Lager (seit v0.3)
+
+- Jede Bestandsänderung ist eine `StockMovement`-Zeile (append-only, Rückgängig
+  = Gegenbuchung mit `reversesId`). Nur über `bookMovement()` in
+  `lib/stock/ledger.ts` buchen, immer in einer Transaktion.
+- `Product.stockQty` ist der Cache: `null` = kein Bestand geführt, sonst
+  `stockQty = SUM(StockMovement.quantity)` (Test:
+  `lib/stock/ledger.integration.test.ts`, läuft gegen echtes Postgres).
+- Mengen sind `Int` in der Lager-Einheit (`lib/stock/units.ts`): Stück, bei
+  Offenware Gramm/Milliliter. Einkaufspreise (EK) in Rappen pro Stück/kg/l,
+  ohne MwSt. Marge wird berechnet, nie gespeichert (`lib/stock/margin.ts`).
+- Mit Bestand ist `isAvailable` abgeleitet (Bestand > Sicherheitsbestand,
+  `lib/stock/availability.ts`) und wird bei jeder Buchung mitgeschrieben;
+  ohne Bestand bleibt es das manuelle Häkchen. Der Shop-Payload bleibt gleich,
+  `stockQty` geht nicht an den Shop.
+- Kassen-Import ist vorbereitet, nicht gebaut: `docs/kassen-anbindung.md`.
+
 ## Was diese App NICHT ist
 
-- kein Kassensystem
-- keine echte Bestandsführung in Phase 1 (`stockQty` bleibt nullable)
-- keine Multi-User-App, kein Rollenkonzept
+- kein Kassensystem (Ladenverkäufe werden gescannt oder später aus der Kasse importiert)
+- keine Multi-User-App, kein Rollenkonzept, keine Benutzer pro Buchung
 - nicht öffentlich erreichbar — läuft im lokalen Netz
+- verschickt nie selbst Bestellungen an Lieferanten (Text kopieren, Inhaber sendet)

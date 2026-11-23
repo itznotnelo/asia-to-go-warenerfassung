@@ -125,3 +125,27 @@
 .animate-scan-flash {
   animation: scan-flash 0.6s ease-out;
 }
+
+/*
+ * Printed lists (Nachbestellen, Inventarliste): black on white paper, no
+ * navigation. Same tokens, so every component prints without its own rules.
+ */
+@media print {
+  :root {
+    --background: oklch(1 0 0);
+    --foreground: oklch(0 0 0);
+    --card: oklch(1 0 0);
+    --card-foreground: oklch(0 0 0);
+    --muted: oklch(0.95 0 0);
+    --muted-foreground: oklch(0.3 0 0);
+    --secondary: oklch(0.95 0 0);
+    --secondary-foreground: oklch(0 0 0);
+    --border: oklch(0.6 0 0);
+    --primary: oklch(0 0 0);
+    --success: oklch(0 0 0);
+    --destructive: oklch(0 0 0);
+  }
+  @page {
+    margin: 15mm;
+  }
+}

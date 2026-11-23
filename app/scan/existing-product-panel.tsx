@@ -5,6 +5,7 @@ import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import { SaveErrorBox } from "@/components/save-error-box";
 import { formatChf, parseChfToRappen, PRICE_ERROR } from "@/lib/pricing";
+import { formatStockQty } from "@/lib/stock/units";
 import type { CategoryOption } from "@/lib/category-option";
 import type { ProductSummary } from "@/lib/product-summary";
 import { useReportDirty } from "./use-report-dirty";
@@ -75,15 +76,23 @@ export function ExistingProductPanel({ product, categories, onSave, onCancel, sa
           {priceError && <span role="alert" className="text-sm text-destructive">{priceError}</span>}
         </label>
 
-        <label className="flex h-14 items-center gap-3 rounded-lg border border-input px-4">
-          <input
-            type="checkbox"
-            checked={isAvailable}
-            onChange={(event) => setIsAvailable(event.target.checked)}
-            className="size-5 accent-primary"
-          />
-          <span>Verfügbar</span>
-        </label>
+        {product.stockQty != null ? (
+          // Tracked: the webshop follows the stock, so no manual switch here.
+          <Link href={`/products/${product.id}#lager`} className="flex h-14 flex-col justify-center rounded-lg border border-input px-4 text-sm hover:bg-muted">
+            <span className="text-muted-foreground">Bestand</span>
+            <span className={product.stockQty < 0 ? "font-numeric text-destructive" : "font-numeric"}>{formatStockQty(product.stockQty, product.unitType)}</span>
+          </Link>
+        ) : (
+          <label className="flex h-14 items-center gap-3 rounded-lg border border-input px-4">
+            <input
+              type="checkbox"
+              checked={isAvailable}
+              onChange={(event) => setIsAvailable(event.target.checked)}
+              className="size-5 accent-primary"
+            />
+            <span>Verfügbar</span>
+          </label>
+        )}
 
         <Button type="submit" size="lg" className="h-14 px-6 text-base" disabled={saving}>
           {saving ? "Speichert …" : "Speichern"}

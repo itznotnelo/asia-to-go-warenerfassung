@@ -42,7 +42,7 @@ export function BackupBanner() {
   }
 
   return (
-    <div role="alert" className="flex items-center gap-3 border-b border-destructive/60 bg-destructive/10 px-4 py-2 text-sm">
+    <div role="alert" className="flex items-center gap-3 border-b border-destructive/60 bg-destructive/10 px-4 py-2 text-sm print:hidden">
       {banner.canCreate ? (
         <>
           <span>{banner.text}</span>

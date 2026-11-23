@@ -13,9 +13,14 @@ const LINE_END = "\r\n";
 // per-import option. The same prefix also defuses formula injection.
 const TEXT_GUARD = "\t";
 
-const COLUMNS: { header: string; value: (row: ProductExportRow) => string }[] = [
+export interface ExcelColumn<T> {
+  header: string;
+  value: (row: T) => string;
+}
+
+const COLUMNS: ExcelColumn<ProductExportRow>[] = [
   { header: "Artikelnr", value: (row) => guardFormula(row.sku) },
-  { header: "EAN", value: (row) => (row.ean === "" ? "" : TEXT_GUARD + row.ean) },
+  { header: "EAN", value: (row) => excelBarcode(row.ean) },
   { header: "Name", value: (row) => guardFormula(row.nameDe) },
   { header: "Originalname", value: (row) => guardFormula(row.nameOriginal) },
   { header: "Kategorie", value: (row) => guardFormula(row.category) },
@@ -38,7 +43,7 @@ export function formatRappenPlain(rappen: number): string {
 }
 
 /** Stops text that starts with = + - @ from being run as a formula (CSV injection). */
-function guardFormula(text: string): string {
+export function guardFormula(text: string): string {
   return /^[=+\-@]/.test(text) ? TEXT_GUARD + text : text;
 }
 
@@ -49,11 +54,24 @@ function escapeField(text: string): string {
   return text;
 }
 
-/** Builds the Excel CSV: UTF-8 BOM, ';' separator, CRLF, German headers. */
-export function toExcelCsv(rows: ProductExportRow[]): string {
-  const lines = [COLUMNS.map((column) => escapeField(column.header)).join(SEPARATOR)];
+/** An EAN/barcode kept as text in Excel (no 4.71027E+12). */
+export function excelBarcode(ean: string): string {
+  return ean === "" ? "" : TEXT_GUARD + ean;
+}
+
+/** Same Excel CSV format for any column list (inventory list, v0.3). */
+export function toExcelCsvWith<T>(columns: ExcelColumn<T>[], rows: T[], footer: string[][] = []): string {
+  const lines = [columns.map((column) => escapeField(column.header)).join(SEPARATOR)];
   for (const row of rows) {
-    lines.push(COLUMNS.map((column) => escapeField(column.value(row))).join(SEPARATOR));
+    lines.push(columns.map((column) => escapeField(column.value(row))).join(SEPARATOR));
+  }
+  for (const cells of footer) {
+    lines.push(cells.map((cell) => escapeField(guardFormula(cell))).join(SEPARATOR));
   }
   return BOM + lines.join(LINE_END) + LINE_END;
+}
+
+/** Builds the Excel CSV: UTF-8 BOM, ';' separator, CRLF, German headers. */
+export function toExcelCsv(rows: ProductExportRow[]): string {
+  return toExcelCsvWith(COLUMNS, rows);
 }

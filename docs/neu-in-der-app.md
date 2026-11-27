@@ -1,5 +1,14 @@
 # Asia To Go App: was ist neu
 
+## Version 0.3.1: aufgeräumt und schnelleres Update
+
+- **Neue Optik:** Alle Seiten haben den gleichen Aufbau: Titel oben links, die wichtigste Aktion als oranger Knopf oben rechts. Die Seite, auf der du bist, ist oben orange unterstrichen.
+- **Grössere Knöpfe:** Alle Knöpfe sind gleich gross und gut mit der Maus zu treffen.
+- **Artikel:** Die Filter stehen in einer Zeile. Preise und Bestand stehen rechtsbündig, so lassen sie sich leichter vergleichen.
+- **Im Artikel:** links die Angaben zum Artikel, rechts Webshop-Status, Lager und Fotos. Weniger scrollen.
+- **Scannen:** «Bereit zum Scannen» blinkt nicht mehr, der Rahmen zeigt, dass der Scanner bereit ist.
+- **Update:** Das Update auf eine neue Version dauerte beim letzten Mal sehr lange (über 15 Minuten). Ab dieser Version löscht das Update die alte Version in einem Schritt. Das sollte nur noch Sekunden dauern. Deine Daten bleiben wie immer erhalten.
+
 ## Version 0.3: das Lager
 
 Oben gibt es jetzt den Menüpunkt **«Lager»**. Die App weiss damit, wie viel von einem Artikel im Laden ist. Jede Änderung am Bestand ist eine Buchung, die man später nachlesen kann.

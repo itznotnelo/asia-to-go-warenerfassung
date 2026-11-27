@@ -50,11 +50,11 @@
 ; On an update electron-builder's OLD uninstaller "atomically" moves every
 ; single file of the old install into %TEMP% (un.atomicRMDir: one NSIS Rename
 ; per file, one CreateDirectory per folder), then deletes it. resources\ holds
-; the Next standalone server and the Electron app's node_modules (prisma,
-; embedded-postgres): well over 20'000 files with deep pnpm paths. That loop
-; takes many minutes with Defender scanning each move, and a path that gets
-; too long under %TEMP% makes the rename fail, the uninstaller restores and
-; aborts, and the installer retries it up to five times.
+; the Next standalone server (~1'900 files) and the Electron app's
+; node_modules (prisma CLI, embedded-postgres: ~11'500 files). With Defender
+; scanning every move that loop takes many minutes, and if any rename fails
+; (a locked file, a path too long under %TEMP%) the uninstaller moves
+; everything back, aborts, and the installer retries it up to five times.
 ;
 ; So before the old uninstaller runs, delete resources\ in one native call
 ; (`rd /s /q` with the \\?\ prefix, which has no MAX_PATH limit). The old

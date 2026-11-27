@@ -115,9 +115,9 @@ export function CountWorkspace({ stocktake, returnedEan }: { stocktake: Stocktak
   const { summary } = stocktake;
 
   return (
-    <div className="mx-auto flex w-full max-w-3xl flex-col gap-6 px-4 py-10">
+    <div className="mx-auto flex w-full max-w-5xl flex-col gap-6 px-6 pt-8 pb-16">
       <div className="flex flex-wrap items-baseline justify-between gap-3">
-        <h1 className="text-xl font-semibold">
+        <h1 className="text-2xl font-semibold">
           Inventur: {stocktake.title}
           {stocktake.categoryName && <span className="text-base font-normal text-muted-foreground"> · {stocktake.categoryName}</span>}
         </h1>
@@ -177,7 +177,7 @@ export function CountWorkspace({ stocktake, returnedEan }: { stocktake: Stocktak
 
       <section className="flex flex-col gap-3">
         <div className="flex flex-wrap items-baseline justify-between gap-2">
-          <h2 className="text-sm font-medium text-muted-foreground">
+          <h2 className="text-base font-semibold">
             Gezählt: {summary.counted} Artikel, davon {summary.changed} mit Abweichung
           </h2>
           <p className="text-sm">
@@ -193,10 +193,10 @@ export function CountWorkspace({ stocktake, returnedEan }: { stocktake: Stocktak
             <table className="w-full text-sm">
               <thead className="text-left text-muted-foreground">
                 <tr className="border-b border-border">
-                  <th className="px-3 py-2 font-normal">Artikel</th>
-                  <th className="px-3 py-2 text-right font-normal">Erwartet</th>
-                  <th className="px-3 py-2 text-right font-normal">Gezählt</th>
-                  <th className="px-3 py-2 text-right font-normal">Differenz</th>
+                  <th className="px-3 py-3 font-medium">Artikel</th>
+                  <th className="px-3 py-3 text-right font-medium">Erwartet</th>
+                  <th className="px-3 py-3 text-right font-medium">Gezählt</th>
+                  <th className="px-3 py-3 text-right font-medium">Differenz</th>
                   {open && <th className="px-3 py-2" />}
                 </tr>
               </thead>

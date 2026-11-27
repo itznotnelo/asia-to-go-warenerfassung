@@ -38,7 +38,7 @@ export function SupplierManager({ suppliers }: { suppliers: SupplierView[] }) {
 
       {suppliers.length === 0 && editing !== "new" && <p className="text-sm text-muted-foreground">Noch keine Lieferanten.</p>}
 
-      <ul className="flex flex-col gap-3">
+      <ul className="grid gap-3 lg:grid-cols-2">
         {suppliers.map((supplier) =>
           editing === supplier.id ? (
             <li key={supplier.id}>

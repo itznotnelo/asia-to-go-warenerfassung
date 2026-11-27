@@ -139,9 +139,9 @@ export function SaleWorkspace({ returnedEan }: { returnedEan: string | null }) {
   }
 
   return (
-    <div className="mx-auto flex w-full max-w-2xl flex-col gap-6 px-4 py-10">
-      <div>
-        <h1 className="text-xl font-semibold">Verkauf erfassen</h1>
+    <div className="mx-auto flex w-full max-w-5xl flex-col gap-6 px-6 pt-8 pb-16">
+      <div className="flex flex-col gap-1.5">
+        <h1 className="text-2xl font-semibold">Verkauf erfassen</h1>
         <p className="text-sm text-muted-foreground">Für Verkäufe im Laden, solange keine Kasse angeschlossen ist. Scannen, Menge prüfen, Enter.</p>
       </div>
 
@@ -197,7 +197,7 @@ export function SaleWorkspace({ returnedEan }: { returnedEan: string | null }) {
       {message && <MessageBox tone={message.tone}>{message.text}</MessageBox>}
 
       <section className="flex flex-col gap-3">
-        <h2 className="text-sm font-medium text-muted-foreground">Eben gebucht</h2>
+        <h2 className="text-base font-semibold">Eben gebucht</h2>
         {booked.length === 0 ? (
           <p className="text-sm text-muted-foreground">Noch nichts in dieser Sitzung.</p>
         ) : (
@@ -231,7 +231,7 @@ export function SaleWorkspace({ returnedEan }: { returnedEan: string | null }) {
 
       <p className="text-sm text-muted-foreground">
         Alle Buchungen stehen unter{" "}
-        <Link href="/stock/movements" className="underline underline-offset-2">
+        <Link href="/stock/movements" className="underline underline-offset-4">
           Buchungen
         </Link>
         .

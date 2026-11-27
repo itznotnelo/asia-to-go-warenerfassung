@@ -32,7 +32,7 @@ export function SyncPausedBox() {
   }
 
   return (
-    <div role="alert" className="flex flex-col gap-2 rounded-md border border-orange-500/60 bg-orange-500/10 px-3 py-2 text-sm">
+    <div role="alert" className="flex flex-col gap-2 rounded-md border border-primary/50 bg-primary/10 px-3 py-2 text-sm">
       <p className="flex flex-wrap items-center gap-3">
         Website-Abgleich angehalten seit dem Zurückholen.
         <Button type="button" size="sm" disabled={sending} onClick={() => void handleSend()}>

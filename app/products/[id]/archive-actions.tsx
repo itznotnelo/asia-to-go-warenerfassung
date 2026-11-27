@@ -32,7 +32,7 @@ export function DeleteSection({ id, nameDe, sku }: { id: string; nameDe: string;
 
   return (
     <section className="flex flex-col gap-3 rounded-lg border border-border bg-card p-6">
-      <h2 className="text-sm font-medium text-muted-foreground">Weitere Aktionen</h2>
+      <h2 className="text-base font-semibold">Weitere Aktionen</h2>
       {!confirming ? (
         <div>
           <Button type="button" variant="outline" onClick={() => setConfirming(true)}>

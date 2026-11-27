@@ -68,7 +68,7 @@ export function SettingsForm({ initialSettings, initialPendingCount, initialStuc
 
   return (
     <div className="flex flex-col gap-6">
-      <form onSubmit={handleSave} className="flex flex-col gap-4 rounded-xl border border-border bg-card p-6">
+      <form onSubmit={handleSave} className="flex flex-col gap-4 rounded-lg border border-border bg-card p-5">
         <label className="flex flex-col gap-1.5">
           <span className="text-sm text-muted-foreground">Backend-URL</span>
           <input
@@ -100,7 +100,7 @@ export function SettingsForm({ initialSettings, initialPendingCount, initialStuc
         </div>
       </form>
 
-      <div className="flex flex-col gap-3 rounded-xl border border-border bg-card p-6">
+      <div className="flex flex-col gap-3 rounded-lg border border-border bg-card p-5">
         <p className="text-sm text-muted-foreground">
           {pendingCount === 0 ? "Alles veröffentlicht." : `${pendingCount} Artikel/Kategorien warten auf Synchronisierung.`}
         </p>

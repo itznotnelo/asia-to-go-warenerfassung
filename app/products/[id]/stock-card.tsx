@@ -130,7 +130,7 @@ export function StockCard({ card, suppliers }: { card: ProductStockCard; supplie
 
       {card.movementCount > 0 && (
       <div className="flex flex-col gap-2">
-        <h3 className="text-sm font-medium text-muted-foreground">Letzte Buchungen</h3>
+        <h3 className="text-sm font-semibold">Letzte Buchungen</h3>
         <MovementTable movements={card.movements} showProduct={false} />
         {card.movementCount > card.movements.length && (
           <a href={`/stock/movements?product=${card.productId}`} className="inline-flex min-h-11 items-center text-sm underline underline-offset-2">

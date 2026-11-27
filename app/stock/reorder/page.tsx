@@ -5,6 +5,8 @@ import { orderMessage } from "@/lib/stock/reorder";
 import { CopyTextButton } from "./copy-text-button";
 import { PrintButton } from "@/components/stock/print-button";
 
+import { EmptyState, PageHeader, listCardClass, listRowClass, pageClass } from "@/components/page";
+
 export const dynamic = "force-dynamic";
 
 export default async function ReorderPage() {
@@ -12,28 +14,28 @@ export default async function ReorderPage() {
   const printedAt = new Date().toLocaleDateString("de-CH", { timeZone: "Europe/Zurich" });
 
   return (
-    <div className="mx-auto flex w-full max-w-3xl flex-col gap-8 px-4 py-10">
-      <div className="flex flex-wrap items-start justify-between gap-3">
-        <div>
-          <h1 className="text-xl font-semibold">Nachbestellen</h1>
-          <p className="text-sm text-muted-foreground print:hidden">
-            Artikel am oder unter dem Meldebestand, pro Lieferant. Die App verschickt nichts: Text kopieren und selbst senden.
-          </p>
-          <p className="hidden text-sm print:block">Stand {printedAt}</p>
-        </div>
-        {groups.length > 0 && <PrintButton />}
-      </div>
+    <main className={pageClass()}>
+      <PageHeader
+        title="Nachbestellen"
+        description={
+          <>
+            <span className="print:hidden">
+              Artikel am oder unter dem Meldebestand, pro Lieferant. Die App verschickt nichts: Text kopieren und selbst senden.
+            </span>
+            <span className="hidden print:inline">Stand {printedAt}</span>
+          </>
+        }
+        actions={groups.length > 0 && <PrintButton />}
+      />
 
       {groups.length === 0 && (
-        <p className="text-sm text-muted-foreground">
-          Nichts nachzubestellen. Den Meldebestand stellt man auf der Artikelseite unter «Lager» ein.
-        </p>
+        <EmptyState title="Nichts nachzubestellen.">Den Meldebestand stellt man auf der Artikelseite unter «Lager» ein.</EmptyState>
       )}
 
       {groups.map((group) => (
         <section key={group.supplier?.id ?? "none"} className="flex flex-col gap-3 break-inside-avoid">
           <div className="flex flex-wrap items-baseline justify-between gap-2">
-            <h2 className="font-medium">
+            <h2 className="text-base font-semibold">
               {group.supplier?.name ?? "Ohne Lieferant"}
               {group.supplier?.customerNumber && <span className="text-sm font-normal text-muted-foreground"> · Kundennr. {group.supplier.customerNumber}</span>}
             </h2>
@@ -41,9 +43,9 @@ export default async function ReorderPage() {
               {[group.supplier?.phone, group.supplier?.email].filter(Boolean).join(" · ")}
             </span>
           </div>
-          <ul className="flex flex-col rounded-lg border border-border bg-card px-4">
+          <ul className={listCardClass}>
             {group.lines.map((line) => (
-              <li key={line.id} className="flex min-h-12 flex-wrap items-center justify-between gap-x-4 border-b border-border py-2 last:border-b-0">
+              <li key={line.id} className={listRowClass + " flex-wrap"}>
                 <span>
                   <Link href={`/products/${line.id}`} className="hover:underline">
                     {line.nameDe}
@@ -64,6 +66,6 @@ export default async function ReorderPage() {
           </div>
         </section>
       ))}
-    </div>
+    </main>
   );
 }

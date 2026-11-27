@@ -99,9 +99,9 @@ export function ReceiptWorkspace({ receipt, suppliers, returnedEan }: Props) {
   const backHref = `/stock/receipts/${receipt.id}`;
 
   return (
-    <div className="mx-auto flex w-full max-w-3xl flex-col gap-6 px-4 py-10">
+    <div className="mx-auto flex w-full max-w-5xl flex-col gap-6 px-6 pt-8 pb-16">
       <div className="flex flex-wrap items-baseline justify-between gap-3">
-        <h1 className="text-xl font-semibold">
+        <h1 className="text-2xl font-semibold">
           Wareneingang{receipt.supplierName ? `: ${receipt.supplierName}` : ""}
           {receipt.deliveryNote && <span className="text-base font-normal text-muted-foreground"> · Lieferschein {receipt.deliveryNote}</span>}
         </h1>
@@ -168,7 +168,7 @@ export function ReceiptWorkspace({ receipt, suppliers, returnedEan }: Props) {
 
       <section className="flex flex-col gap-3">
         <div className="flex items-baseline justify-between">
-          <h2 className="text-sm font-medium text-muted-foreground">Positionen ({receipt.lines.length})</h2>
+          <h2 className="text-base font-semibold">Positionen ({receipt.lines.length})</h2>
           <p className="text-sm">
             Total EK <span className="font-numeric font-medium">{formatChf(receipt.totalCostRappen)}</span>
             {receipt.linesWithoutCost > 0 && <span className="text-muted-foreground"> ({receipt.linesWithoutCost} ohne Preis)</span>}

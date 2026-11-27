@@ -20,7 +20,7 @@ const LINKS = [
 export function StockNav() {
   const pathname = usePathname();
   return (
-    <nav aria-label="Lager" className="flex flex-wrap gap-1 border-b border-border px-4 py-2 print:hidden">
+    <nav aria-label="Lager" className="flex flex-wrap items-stretch gap-1 border-b border-border px-4 print:hidden">
       {LINKS.map((link) => {
         const active = link.exact ? pathname === link.href : pathname === link.href || pathname.startsWith(`${link.href}/`);
         return (
@@ -29,8 +29,9 @@ export function StockNav() {
             href={link.href}
             aria-current={active ? "page" : undefined}
             className={cn(
-              "inline-flex min-h-11 items-center rounded-lg px-3 text-sm",
-              active ? "bg-secondary text-foreground" : "text-muted-foreground hover:text-foreground",
+              "relative inline-flex min-h-12 items-center px-3 text-sm transition-colors",
+              "after:absolute after:inset-x-2.5 after:bottom-0 after:h-0.5 after:bg-transparent",
+              active ? "font-medium text-foreground after:bg-foreground/70" : "text-muted-foreground hover:text-foreground",
             )}
           >
             {link.label}

@@ -3,6 +3,8 @@ import { prisma } from "@/lib/prisma";
 import { getCategories } from "@/app/scan/actions";
 import { toProductSummary } from "@/lib/product-summary";
 import { missingForShop, missingLabels } from "@/lib/shop-readiness";
+import { EmptyState, PageHeader, SectionTitle, StatCard, listCardClass, pageClass } from "@/components/page";
+import { buttonVariants } from "@/components/ui/button-variants";
 import { buildCategoryCounts, computeOffHitRate, countIncomplete, WORK_QUEUE_LIMIT } from "./stats";
 
 // Zeigt live Fortschritt aus der DB — darf nie zur Build-Zeit eingefroren
@@ -38,84 +40,88 @@ export default async function DashboardPage() {
   const categoryById = new Map(categories.map((c) => [c.id, c]));
 
   return (
-    <div className="mx-auto flex w-full max-w-4xl flex-col gap-8 px-4 py-10">
-      <h1 className="text-xl font-semibold">Fortschritt</h1>
+    <main className={pageClass()}>
+      <PageHeader
+        title="Fortschritt"
+        description="Wie weit die Erfassung ist und was für den Webshop noch fehlt."
+        actions={
+          incompleteProducts[0] && (
+            <Link href={`/products/${incompleteProducts[0].id}`} className={buttonVariants()}>
+              Ersten Artikel ergänzen
+            </Link>
+          )
+        }
+      />
 
       <div className="grid grid-cols-3 gap-4">
         <StatCard label="Artikel erfasst" value={String(totalCount)} />
         <StatCard label="Vollständig" value={`${completeCount} / ${totalCount}`} />
-        <StatCard label="Online gefunden" value={offHitRate === null ? "noch keine" : `${Math.round(offHitRate * 100)} %`} />
+        <StatCard
+          label="Online gefunden"
+          value={offHitRate === null ? "noch keine Scans" : `${Math.round(offHitRate * 100)} %`}
+          numeric={offHitRate !== null}
+        />
       </div>
 
-      <section className="flex flex-col gap-3">
-        <h2 className="text-sm font-medium text-muted-foreground">Artikel pro Kategorie</h2>
-        <div className="flex flex-col gap-1 rounded-xl border border-border bg-card p-4">
-          {categoryCounts.length === 0 && <p className="text-sm text-muted-foreground">Noch keine Artikel erfasst.</p>}
-          {categoryCounts.map((entry) => (
-            <div key={entry.categoryId} className="flex items-center justify-between border-b border-border py-2 last:border-b-0">
-              <span>
-                {entry.parentName && <span className="text-muted-foreground">{entry.parentName} · </span>}
-                {entry.categoryName}
-              </span>
-              <span className="font-numeric">{entry.count}</span>
+      <div className="grid items-start gap-8 lg:grid-cols-[minmax(0,3fr)_minmax(0,2fr)]">
+        <section className="flex flex-col gap-3">
+          <SectionTitle title={`Noch nicht im Webshop (${incompleteCount})`} />
+          {incompleteProducts.length === 0 ? (
+            <EmptyState title="Alle Artikel sind vollständig.">Neue Artikel kommen über «Scannen» dazu.</EmptyState>
+          ) : (
+            <div className={listCardClass}>
+              {incompleteProducts.map((product) => {
+                const missing = missingLabels(
+                  missingForShop({ ...toProductSummary(product), kind: product.kind }, product._count.images > 0),
+                );
+                return (
+                  <Link
+                    key={product.id}
+                    href={`/products/${product.id}`}
+                    className="-mx-4 flex min-h-14 flex-col justify-center gap-0.5 border-b border-border px-4 py-2.5 transition-colors last:border-b-0 hover:bg-muted/50"
+                  >
+                    <span className="flex flex-wrap items-baseline justify-between gap-x-4">
+                      <span className="font-medium">{product.nameDe}</span>
+                      <span className="font-numeric text-xs text-muted-foreground">{product.sku}</span>
+                    </span>
+                    <span className="text-sm text-muted-foreground">
+                      {categoryById.get(product.categoryId)?.name ?? "ohne Kategorie"} · Fehlt: <span className="text-foreground">{missing.join(", ")}</span>
+                    </span>
+                  </Link>
+                );
+              })}
             </div>
-          ))}
-        </div>
-      </section>
-
-      <section className="flex flex-col gap-3">
-        <div className="flex flex-wrap items-center justify-between gap-3">
-          <h2 className="text-sm font-medium text-muted-foreground">Noch nicht im Webshop ({incompleteCount})</h2>
-          {incompleteProducts[0] && (
-            <Link
-              href={`/products/${incompleteProducts[0].id}`}
-              className="inline-flex min-h-11 items-center rounded-md bg-primary px-4 text-sm font-medium text-primary-foreground hover:bg-primary/80"
-            >
-              Ersten Artikel ergänzen
-            </Link>
           )}
-        </div>
-        <div className="flex flex-col gap-1 rounded-xl border border-border bg-card p-4">
-          {incompleteProducts.length === 0 && <p className="text-sm text-muted-foreground">Alle Artikel sind vollständig.</p>}
-          {incompleteProducts.map((product) => {
-            const missing = missingLabels(
-              missingForShop({ ...toProductSummary(product), kind: product.kind }, product._count.images > 0),
-            );
-            return (
-              <Link
-                key={product.id}
-                href={`/products/${product.id}`}
-                className="flex min-h-12 flex-wrap items-center justify-between gap-x-4 gap-y-1 border-b border-border py-2 last:border-b-0 hover:bg-muted/50"
-              >
-                <span>
-                  {product.nameDe}
-                  <span className="font-numeric text-xs text-muted-foreground"> · {product.sku}</span>
-                  <span className="text-xs text-muted-foreground"> · {categoryById.get(product.categoryId)?.name ?? "ohne Kategorie"}</span>
-                </span>
-                <span className="text-sm text-muted-foreground">Fehlt: {missing.join(", ")}</span>
+          {incompleteCount > incompleteProducts.length && (
+            <p className="text-sm text-muted-foreground">
+              Die {WORK_QUEUE_LIMIT} zuletzt bearbeiteten. Alle unter{" "}
+              <Link href="/products" className="underline underline-offset-4 hover:text-foreground">
+                Artikel
               </Link>
-            );
-          })}
-        </div>
-        {incompleteCount > incompleteProducts.length && (
-          <p className="text-sm text-muted-foreground">
-            Die {WORK_QUEUE_LIMIT} zuletzt bearbeiteten. Alle unter{" "}
-            <Link href="/products" className="underline underline-offset-2 hover:text-foreground">
-              Artikel
-            </Link>
-            .
-          </p>
-        )}
-      </section>
-    </div>
-  );
-}
+              .
+            </p>
+          )}
+        </section>
 
-function StatCard({ label, value }: { label: string; value: string }) {
-  return (
-    <div className="rounded-xl border border-border bg-card p-4">
-      <p className="text-sm text-muted-foreground">{label}</p>
-      <p className="font-numeric text-2xl font-semibold">{value}</p>
-    </div>
+        <section className="flex flex-col gap-3">
+          <SectionTitle title="Artikel pro Kategorie" />
+          {categoryCounts.length === 0 ? (
+            <EmptyState title="Noch keine Artikel erfasst." />
+          ) : (
+            <div className={listCardClass}>
+              {categoryCounts.map((entry) => (
+                <div key={entry.categoryId} className="flex min-h-11 items-center justify-between gap-4 border-b border-border py-2 text-sm last:border-b-0">
+                  <span>
+                    {entry.parentName && <span className="text-muted-foreground">{entry.parentName} · </span>}
+                    {entry.categoryName}
+                  </span>
+                  <span className="font-numeric">{entry.count}</span>
+                </div>
+              ))}
+            </div>
+          )}
+        </section>
+      </div>
+    </main>
   );
 }

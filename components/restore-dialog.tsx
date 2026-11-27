@@ -179,7 +179,7 @@ export function RestoreDialog({ api, copyFolder, onClose }: { api: RestoreApi; c
           </p>
           <p className="text-sm text-muted-foreground">{r2.safety}</p>
           {r2.oldWarning && (
-            <p className="rounded-md border border-orange-500/60 bg-orange-500/10 px-3 py-2 text-sm">{r2.oldWarning}</p>
+            <p className="rounded-md border border-primary/50 bg-primary/10 px-3 py-2 text-sm">{r2.oldWarning}</p>
           )}
           <label className="flex items-start gap-2 text-sm">
             <input type="checkbox" className="mt-0.5" checked={understood} onChange={(e) => setUnderstood(e.target.checked)} />
@@ -192,7 +192,7 @@ export function RestoreDialog({ api, copyFolder, onClose }: { api: RestoreApi; c
             <Button
               type="button"
               disabled={!understood || starting}
-              className="bg-destructive text-white hover:bg-destructive/90"
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
               onClick={() => void handleRestore()}
             >
               {RESTORE_TEXT.r2Confirm}

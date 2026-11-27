@@ -50,7 +50,7 @@ export const BACKUP_CHANGED_EVENT = "atg:backup-changed";
 
 const TONE_CLASS = {
   ok: "",
-  warning: "rounded-md border border-orange-500/60 bg-orange-500/10 px-3 py-2",
+  warning: "rounded-md border border-primary/50 bg-primary/10 px-3 py-2",
   error: "rounded-md border border-destructive/60 bg-destructive/10 px-3 py-2",
 } as const;
 
@@ -118,12 +118,12 @@ export function BackupSection() {
 
   return (
     <section id="sicherung" className="flex flex-col gap-3 scroll-mt-4" aria-labelledby="backup-title">
-      <h2 id="backup-title" className="text-lg font-semibold">
+      <h2 id="backup-title" className="text-base font-semibold">
         Datensicherung
       </h2>
 
       <p className={cn("flex items-start gap-2 text-sm", TONE_CLASS[state.tone])} role={state.tone === "ok" ? undefined : "alert"}>
-        {state.tone === "ok" && <span aria-hidden className="mt-1.5 size-2 shrink-0 rounded-sm bg-green-600" />}
+        {state.tone === "ok" && <span aria-hidden className="mt-1.5 size-2 shrink-0 rounded-sm bg-success" />}
         {state.text}
       </p>
 
@@ -148,7 +148,7 @@ export function BackupSection() {
           {running ? "Sicherung läuft …" : "Datensicherung erstellen"}
         </Button>
         {result && (
-          <p role="status" className={cn("text-sm", result.tone === "ok" ? "text-green-700" : "text-destructive")}>
+          <p role="status" className={cn("text-sm", result.tone === "ok" ? "text-success" : "text-destructive")}>
             {result.text}
           </p>
         )}

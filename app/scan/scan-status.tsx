@@ -13,8 +13,9 @@ export function presentStatus(state: ScanState): StatusPresentation {
     case "idle":
       return {
         label: "Bereit zum Scannen",
-        className: "bg-secondary text-foreground",
-        animate: "pulse",
+        detail: "Barcode scannen oder unten eintippen",
+        // Calm, static ready state (no glow loop): amber hairline says "armed".
+        className: "border border-primary/45 bg-card text-foreground",
       };
     case "looking-up":
       return {
@@ -94,14 +95,14 @@ export function ScanStatus({ state }: { state: ScanState }) {
     <div
       key={statusKey(state)}
       className={cn(
-        "flex min-h-24 w-full flex-col items-center justify-center gap-1 rounded-xl px-6 py-5 text-center transition-colors",
+        "flex min-h-28 w-full flex-col items-center justify-center gap-1 rounded-lg px-6 py-5 text-center transition-colors",
         presentation.className,
         presentation.animate === "pulse" && "animate-scan-ready",
         presentation.animate === "flash" && "animate-scan-flash",
       )}
     >
-      <span className="text-xl font-semibold tracking-tight">{presentation.label}</span>
-      {presentation.detail && <span className="font-numeric text-sm opacity-80">{presentation.detail}</span>}
+      <span className="text-2xl font-semibold text-balance">{presentation.label}</span>
+      {presentation.detail && <span className={cn("text-sm opacity-80", state.status !== "idle" && state.status !== "no-barcode" && "font-numeric")}>{presentation.detail}</span>}
     </div>
   );
 }

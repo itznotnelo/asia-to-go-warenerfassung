@@ -88,6 +88,41 @@
   html {
     @apply font-sans;
     font-feature-settings: "cv05", "cv09";
+    /* Native selects, date pickers and scrollbars follow the dark theme. */
+    color-scheme: dark;
+    scrollbar-color: oklch(0.4 0.008 70) transparent;
+  }
+  h1,
+  h2,
+  h3 {
+    text-wrap: balance;
+  }
+  p {
+    text-wrap: pretty;
+  }
+  ::selection {
+    background: color-mix(in oklch, var(--primary), transparent 65%);
+    color: var(--foreground);
+  }
+  /* Checkboxes and radios in the one accent, caret too. */
+  input,
+  textarea,
+  select {
+    accent-color: var(--primary);
+    caret-color: var(--primary);
+  }
+  input[type="checkbox"],
+  input[type="radio"] {
+    width: 1.125rem;
+    height: 1.125rem;
+    cursor: pointer;
+  }
+  /* Numbers in tables line up column by column. */
+  table {
+    font-variant-numeric: tabular-nums;
+  }
+  :focus-visible {
+    outline-offset: 2px;
   }
 }
 
@@ -99,13 +134,14 @@
   }
 }
 
+/* Lookup in progress: the label breathes, nothing glows. */
 @keyframes scan-ready-pulse {
   0%,
   100% {
-    box-shadow: 0 0 0 0 color-mix(in oklch, var(--primary), transparent 65%);
+    opacity: 1;
   }
   50% {
-    box-shadow: 0 0 0 0.75rem color-mix(in oklch, var(--primary), transparent 100%);
+    opacity: 0.7;
   }
 }
 
@@ -119,7 +155,14 @@
 }
 
 .animate-scan-ready {
-  animation: scan-ready-pulse 2.4s ease-in-out infinite;
+  animation: scan-ready-pulse 1.2s ease-in-out infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .animate-scan-ready,
+  .animate-scan-flash {
+    animation: none;
+  }
 }
 
 .animate-scan-flash {
@@ -144,6 +187,9 @@
     --primary: oklch(0 0 0);
     --success: oklch(0 0 0);
     --destructive: oklch(0 0 0);
+  }
+  html {
+    color-scheme: light;
   }
   @page {
     margin: 15mm;

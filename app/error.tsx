@@ -11,7 +11,7 @@ export default function ErrorPage({ error }: { error: Error & { digest?: string 
 
   return (
     <div role="alert" className="mx-auto flex w-full max-w-xl flex-col gap-4 px-4 py-16">
-      <h1 className="text-xl font-semibold">Diese Seite konnte nicht geladen werden</h1>
+      <h1 className="text-2xl font-semibold">Diese Seite konnte nicht geladen werden</h1>
       <p className="text-muted-foreground">Bereits gespeicherte Artikel sind nicht betroffen. Bitte die Seite neu laden.</p>
       <Button type="button" size="lg" className="h-14 self-start px-6 text-base" onClick={() => window.location.reload()}>
         Neu laden

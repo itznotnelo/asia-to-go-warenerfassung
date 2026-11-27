@@ -42,7 +42,7 @@ export function ShopReadinessBox({ missing, isAvailable, archived, nextIncomplet
         (stockTracked ? (
           <p className="text-sm">Zu wenig Bestand. Der Artikel erscheint wieder, sobald genug da ist (Lieferung einbuchen oder Bestand korrigieren).</p>
         ) : (
-          <p className="text-sm">Unten «Verfügbar» ankreuzen und speichern, dann erscheint der Artikel im Webshop.</p>
+          <p className="text-sm">Im Formular «Verfügbar» ankreuzen und speichern, dann erscheint der Artikel im Webshop.</p>
         ))}
 
       {state !== "incomplete" && nextIncomplete && (

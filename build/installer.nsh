@@ -43,3 +43,62 @@
   Pop $R2
   Pop $R1
 !macroend
+
+; ---------------------------------------------------------------------------
+; Fast removal of the old app folder (v0.3.1, fixes the 17+ min update hang).
+;
+; On an update electron-builder's OLD uninstaller "atomically" moves every
+; single file of the old install into %TEMP% (un.atomicRMDir: one NSIS Rename
+; per file, one CreateDirectory per folder), then deletes it. resources\ holds
+; the Next standalone server (~1'900 files) and the Electron app's
+; node_modules (prisma CLI, embedded-postgres: ~11'500 files). With Defender
+; scanning every move that loop takes many minutes, and if any rename fails
+; (a locked file, a path too long under %TEMP%) the uninstaller moves
+; everything back, aborts, and the installer retries it up to five times.
+;
+; So before the old uninstaller runs, delete resources\ in one native call
+; (`rd /s /q` with the \\?\ prefix, which has no MAX_PATH limit). The old
+; uninstaller then only moves the ~100 Electron runtime files that are left.
+; Only the program folder is touched; data in %APPDATA%\Asia To Go stays.
+; ---------------------------------------------------------------------------
+!macro atgFastRemoveResources DIR
+  ${if} ${FileExists} "${DIR}\${APP_EXECUTABLE_FILENAME}"
+  ${andIf} ${FileExists} "${DIR}\resources\*.*"
+    DetailPrint "Removing old program files in ${DIR}\resources"
+    nsExec::Exec `"$SYSDIR\cmd.exe" /C rd /s /q "\\?\${DIR}\resources"`
+    Pop $0
+    ${if} ${FileExists} "${DIR}\resources\*.*"
+      ; Something was still locked: the default removal below handles the rest.
+      DetailPrint "Old resources folder not fully removed (rd exit $0)"
+    ${endIf}
+    ClearErrors
+  ${endIf}
+!macroend
+
+; Installer .onInit. Only for the silent auto-update (--updated): the app has
+; just called quitAndInstall and is shutting down (Next server, Postgres). Wait
+; up to 30 s for every process started from the install folder to exit, end
+; the rest, then drop resources\ before uninstallOldVersion runs. A manual
+; install keeps electron-builder's normal "app is running" prompt.
+!macro customInit
+  ${if} ${isUpdated}
+  ${andIf} ${FileExists} "$INSTDIR\${APP_EXECUTABLE_FILENAME}"
+    Push $0
+    nsExec::Exec `"$SYSDIR\WindowsPowerShell\v1.0\powershell.exe" -NoProfile -NonInteractive -ExecutionPolicy Bypass -C "$$d = '$INSTDIR\'; function Get-AppProcs { Get-CimInstance -ClassName Win32_Process | ? { $$_.Path -and $$_.Path.StartsWith($$d, 'CurrentCultureIgnoreCase') } }; for ($$i = 0; $$i -lt 30 -and (Get-AppProcs); $$i++) { Start-Sleep -Seconds 1 }; Get-AppProcs | % { Stop-Process -Id $$_.ProcessId -Force -ErrorAction SilentlyContinue }; Start-Sleep -Milliseconds 500"`
+    Pop $0
+    ${if} $0 == "error"
+      ; No PowerShell: give the app a moment to quit on its own.
+      Sleep 5000
+    ${endIf}
+    !insertmacro atgFastRemoveResources "$INSTDIR"
+    Pop $0
+  ${endIf}
+!macroend
+
+; Uninstaller (also the one a later update runs as "old uninstaller"): same
+; fast removal before electron-builder's per-file move.
+!macro customUnInstall
+  Push $0
+  !insertmacro atgFastRemoveResources "$INSTDIR"
+  Pop $0
+!macroend

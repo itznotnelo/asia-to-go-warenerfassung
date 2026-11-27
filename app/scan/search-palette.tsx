@@ -60,7 +60,7 @@ export function SearchPalette({ onSelect, onClose }: SearchPaletteProps) {
       onKeyDown={(event) => event.key === "Escape" && onClose()}
     >
       <div
-        className="w-full max-w-lg rounded-xl border border-border bg-popover p-3 shadow-2xl"
+        className="w-full max-w-lg rounded-lg border border-border bg-popover p-3 shadow-[0_16px_48px_-12px_oklch(0_0_0/0.6)]"
         onClick={(event) => event.stopPropagation()}
       >
         <input

@@ -89,9 +89,9 @@ export function ProductEditForm({
   }
 
   return (
-    <form onSubmit={handleSubmit} className="flex flex-col gap-5 rounded-xl border border-border bg-card p-6">
+    <form onSubmit={handleSubmit} className="flex flex-col gap-5 rounded-lg border border-border bg-card p-5">
       <div className="flex items-center justify-between">
-        <p className="font-numeric text-sm text-muted-foreground">{product.sku}</p>
+        <h2 className="text-base font-semibold">Stammdaten</h2>
         {message && <p className="text-sm text-muted-foreground">{message}</p>}
       </div>
 

@@ -6,6 +6,9 @@ import { movementFilterSchema } from "@/lib/stock/schemas";
 import { inputClass } from "@/lib/input-class";
 import { MovementTable } from "@/components/stock/movement-table";
 
+import { PageHeader, listCardClass, pageClass } from "@/components/page";
+import { buttonVariants } from "@/components/ui/button-variants";
+
 export const dynamic = "force-dynamic";
 
 export default async function MovementsPage({ searchParams }: { searchParams: Promise<{ type?: string; product?: string }> }) {
@@ -18,16 +21,21 @@ export default async function MovementsPage({ searchParams }: { searchParams: Pr
   ]);
 
   return (
-    <div className="mx-auto flex w-full max-w-4xl flex-col gap-6 px-4 py-10">
-      <h1 className="text-xl font-semibold">Buchungen{productRow && `: ${productRow.nameDe}`}</h1>
-      {productRow && (
-        <Link href="/stock/movements" className="inline-flex min-h-11 items-center self-start text-sm underline underline-offset-2">
-          Alle Artikel zeigen
-        </Link>
-      )}
+    <main className={pageClass() + " gap-6"}>
+      <PageHeader
+        title={`Buchungen${productRow ? `: ${productRow.nameDe}` : ""}`}
+        description="Jede Bestandsänderung, neueste zuerst. Korrigiert wird mit einer Gegenbuchung, nie durch Löschen."
+        actions={
+          productRow && (
+            <Link href="/stock/movements" className={buttonVariants({ variant: "outline" })}>
+              Alle Artikel zeigen
+            </Link>
+          )
+        }
+      />
       <form method="get" className="flex flex-wrap items-end gap-3">
         {productRow && <input type="hidden" name="product" value={productRow.id} />}
-        <label className="flex flex-col gap-1 text-sm">
+        <label className="flex min-w-56 flex-col gap-1.5 text-sm text-muted-foreground">
           Art
           <select name="type" defaultValue={filter.success ? (filter.data.type ?? "") : ""} className={inputClass()}>
             <option value="">Alle</option>
@@ -38,14 +46,14 @@ export default async function MovementsPage({ searchParams }: { searchParams: Pr
             ))}
           </select>
         </label>
-        <button type="submit" className="h-11 rounded-lg border border-border px-4 text-sm hover:bg-muted">
+        <button type="submit" className={buttonVariants({ variant: "secondary" })}>
           Filtern
         </button>
       </form>
-      <div className="rounded-lg border border-border bg-card px-4">
+      <div className={listCardClass}>
         <MovementTable movements={movements} showProduct={!productRow} />
       </div>
       {movements.length === 200 && <p className="text-sm text-muted-foreground">Die neusten 200.</p>}
-    </div>
+    </main>
   );
 }

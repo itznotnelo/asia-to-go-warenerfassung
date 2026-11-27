@@ -1,3 +1,4 @@
+import { PageHeader, pageClass } from "@/components/page";
 import { notFound } from "next/navigation";
 import { prisma } from "@/lib/prisma";
 import { toProductSummary } from "@/lib/product-summary";
@@ -42,36 +43,51 @@ export default async function ProductDetailPage({ params }: { params: Promise<{ 
   const missing = missingForShop({ ...summary, kind: product.kind }, images.length > 0);
 
   return (
-    <div className="mx-auto flex w-full max-w-2xl flex-col gap-6 px-4 py-10">
-      <h1 className="text-xl font-semibold">{product.nameDe}</h1>
-
-      <ShopReadinessBox
-        missing={missing}
-        isAvailable={product.isAvailable}
-        archived={product.archivedAt !== null}
-        nextIncomplete={nextIncomplete}
-        stockTracked={product.stockQty !== null}
+    <main className={pageClass()}>
+      <PageHeader
+        title={product.nameDe}
+        description={
+          <span className="font-numeric">
+            {product.sku}
+            {product.ean && ` · EAN ${product.ean}`}
+          </span>
+        }
       />
 
-      {product.archivedAt && (
-        <ArchivedPanel
-          id={product.id}
-          nameDe={product.nameDe}
-          sku={product.sku}
-          archivedAtLabel={formatDateTime(product.archivedAt)}
-          shopDeleteDueLabel={formatDateTime(shopDeleteDueAt(product.archivedAt))}
-          gracePeriodOver={isGracePeriodOver(product.archivedAt, new Date())}
-        />
-      )}
+      {/* Two columns at the counter laptop (1366 px): edit on the left, status and stock on the right. */}
+      <div className="grid items-start gap-8 lg:grid-cols-[minmax(0,3fr)_minmax(0,2fr)]">
+        <div className="flex flex-col gap-6 lg:order-2">
+          <ShopReadinessBox
+            missing={missing}
+            isAvailable={product.isAvailable}
+            archived={product.archivedAt !== null}
+            nextIncomplete={nextIncomplete}
+            stockTracked={product.stockQty !== null}
+          />
 
-      {stockCard && <StockCard card={stockCard} suppliers={suppliers} />}
+          {product.archivedAt && (
+            <ArchivedPanel
+              id={product.id}
+              nameDe={product.nameDe}
+              sku={product.sku}
+              archivedAtLabel={formatDateTime(product.archivedAt)}
+              shopDeleteDueLabel={formatDateTime(shopDeleteDueAt(product.archivedAt))}
+              gracePeriodOver={isGracePeriodOver(product.archivedAt, new Date())}
+            />
+          )}
 
-      <ProductImages images={images} />
-      <ImageUpload productId={product.id} />
+          {stockCard && <StockCard card={stockCard} suppliers={suppliers} />}
 
-      <ProductEditForm product={summary} kind={product.kind} categories={categories} />
+          <ProductImages images={images} />
+          <ImageUpload productId={product.id} />
+        </div>
 
-      {!product.archivedAt && <DeleteSection id={product.id} nameDe={product.nameDe} sku={product.sku} />}
-    </div>
+        <div className="flex flex-col gap-6 lg:order-1">
+          <ProductEditForm product={summary} kind={product.kind} categories={categories} />
+
+          {!product.archivedAt && <DeleteSection id={product.id} nameDe={product.nameDe} sku={product.sku} />}
+        </div>
+      </div>
+    </main>
   );
 }

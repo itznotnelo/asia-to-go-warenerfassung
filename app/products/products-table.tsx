@@ -90,32 +90,32 @@ export function ProductsTable({ products, categories }: ProductsTableProps) {
 
       {selected.size > 0 && <BulkActionBar count={selected.size} categories={categories} onApply={applyBulk} disabled={isPending} />}
 
-      <div className="overflow-x-auto rounded-xl border border-border">
+      <div className="overflow-x-auto rounded-lg border border-border bg-card">
         <table className="w-full text-sm" aria-label="Artikelliste">
-          <thead className="bg-secondary text-left text-muted-foreground">
+          <thead className="border-b border-border text-left text-muted-foreground [&_th]:font-medium">
             <tr>
-              <th className="w-10 px-3 py-2" scope="col">
+              <th className="w-12 px-4 py-3" scope="col">
                 <input type="checkbox" aria-label="Alle auswählen" checked={selected.size === products.length && products.length > 0} onChange={toggleAll} />
               </th>
-              <th className="px-3 py-2" scope="col">Artikel</th>
-              <th className="px-3 py-2" scope="col">Kategorie</th>
-              <th className="px-3 py-2" scope="col">Preis</th>
-              <th className="px-3 py-2" scope="col">Lagerung</th>
-              <th className="px-3 py-2" scope="col">Quelle</th>
-              <th className="px-3 py-2" scope="col">Status</th>
-              <th className="px-3 py-2" scope="col">Verfügbar / Bestand</th>
+              <th className="px-3 py-3" scope="col">Artikel</th>
+              <th className="px-3 py-3" scope="col">Kategorie</th>
+              <th className="px-3 py-3 text-right" scope="col">Preis</th>
+              <th className="px-3 py-3" scope="col">Lagerung</th>
+              <th className="px-3 py-3" scope="col">Quelle</th>
+              <th className="px-3 py-3" scope="col">Status</th>
+              <th className="px-4 py-3 text-right" scope="col">Verfügbar / Bestand</th>
             </tr>
           </thead>
           <tbody>
             {products.map((product) => {
               const category = categories.find((c) => c.id === product.categoryId);
               return (
-                <tr key={product.id} className="border-t border-border hover:bg-muted/50">
-                  <td className="px-3 py-2">
+                <tr key={product.id} className="border-t border-border transition-colors first:border-t-0 hover:bg-muted/40">
+                  <td className="px-4 py-2.5">
                     <input type="checkbox" aria-label={`Auswahl ${product.nameDe}`} checked={selected.has(product.id)} onChange={() => toggleSelected(product.id)} />
                   </td>
-                  <td className="px-3 py-2">
-                    <Link href={`/products/${product.id}`} className="hover:underline">
+                  <td className="px-3 py-2.5">
+                    <Link href={`/products/${product.id}`} className="font-medium underline-offset-4 hover:underline">
                       {product.nameDe}
                     </Link>
                     <div className="font-numeric text-xs text-muted-foreground">
@@ -123,8 +123,8 @@ export function ProductsTable({ products, categories }: ProductsTableProps) {
                       {product.nameOriginal && ` · ${product.nameOriginal}`}
                     </div>
                   </td>
-                  <td className="px-3 py-2 text-muted-foreground">{category?.name ?? "ohne Kategorie"}</td>
-                  <td className="font-numeric px-3 py-2">
+                  <td className="px-3 py-2.5 text-muted-foreground">{category?.name ?? "ohne Kategorie"}</td>
+                  <td className="font-numeric px-3 py-2.5 text-right whitespace-nowrap">
                     {editingPriceId === product.id ? (
                       <>
                         <input
@@ -140,7 +140,7 @@ export function ProductsTable({ products, categories }: ProductsTableProps) {
                           }}
                           aria-invalid={priceDraftError}
                           disabled={isPending}
-                          className="h-8 w-24 rounded border border-input bg-transparent px-2 aria-invalid:border-destructive disabled:opacity-50"
+                          className="h-9 w-24 rounded-md border border-input bg-transparent px-2 text-right aria-invalid:border-destructive disabled:opacity-50"
                         />
                         {priceDraftError && (
                           <span role="alert" className="block text-xs text-destructive">
@@ -149,29 +149,35 @@ export function ProductsTable({ products, categories }: ProductsTableProps) {
                         )}
                       </>
                     ) : (
-                      <button type="button" onClick={() => startEditPrice(product)} disabled={isPending} className="hover:underline disabled:opacity-50">
+                      <button
+                        type="button"
+                        title="Preis ändern"
+                        onClick={() => startEditPrice(product)}
+                        disabled={isPending}
+                        className="-mx-2 inline-flex min-h-9 items-center rounded-md px-2 decoration-dotted underline-offset-4 transition-colors hover:bg-muted hover:underline disabled:opacity-50"
+                      >
                         {formatChf(product.priceRappen)}
                       </button>
                     )}
                   </td>
-                  <td className="px-3 py-2 text-muted-foreground">{STORAGE_LABELS[product.storageType]}</td>
-                  <td className="px-3 py-2 text-muted-foreground">{SOURCE_LABELS[product.dataSource]}</td>
-                  <td className="px-3 py-2">
+                  <td className="px-3 py-2.5 text-muted-foreground">{STORAGE_LABELS[product.storageType]}</td>
+                  <td className="px-3 py-2.5 text-muted-foreground">{SOURCE_LABELS[product.dataSource]}</td>
+                  <td className="px-3 py-2.5">
                     <span
                       className={cn(
-                        "rounded-sm px-2 py-0.5 text-xs",
+                        "rounded-sm px-2 py-0.5 text-xs whitespace-nowrap",
                         product.dataComplete ? "bg-success/20 text-success" : "bg-muted text-muted-foreground",
                       )}
                     >
                       {product.dataComplete ? "vollständig" : "unvollständig"}
                     </span>
                   </td>
-                  <td className="px-3 py-2">
+                  <td className="px-4 py-2.5 text-right">
                     {product.stockQty != null ? (
                       // Tracked: the webshop follows the stock, no manual switch.
                       <span
                         title="Bestand wird geführt: im Webshop sichtbar, solange genug da ist"
-                        className={cn("font-numeric text-xs", product.stockQty < 0 ? "text-destructive" : product.isAvailable ? "text-foreground" : "text-muted-foreground")}
+                        className={cn("font-numeric text-sm whitespace-nowrap", product.stockQty < 0 ? "text-destructive" : product.isAvailable ? "text-foreground" : "text-muted-foreground")}
                       >
                         {formatStockQty(product.stockQty, product.unitType)}
                       </span>
@@ -184,8 +190,9 @@ export function ProductsTable({ products, categories }: ProductsTableProps) {
             })}
             {products.length === 0 && (
               <tr>
-                <td colSpan={8} className="px-3 py-8 text-center text-muted-foreground">
-                  Keine Artikel gefunden.
+                <td colSpan={8} className="px-4 py-12 text-center text-muted-foreground">
+                  <p className="font-medium text-foreground">Keine Artikel gefunden.</p>
+                  <p className="mt-1 text-sm">Andere Filter wählen oder «Zurücksetzen».</p>
                 </td>
               </tr>
             )}

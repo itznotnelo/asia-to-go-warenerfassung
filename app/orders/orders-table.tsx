@@ -51,27 +51,28 @@ export function OrdersTable({ orders }: { orders: OrderRow[] }) {
     <div className="flex flex-col gap-4">
       {error && <p role="alert" className="text-sm text-destructive">{error}</p>}
       {orders.map((order) => (
-        <div key={order.id} className="flex flex-col gap-3 rounded-xl border border-border bg-card p-4">
-          <div className="flex items-center justify-between">
+        <div key={order.id} className="flex flex-col gap-4 rounded-lg border border-border bg-card p-5">
+          <div className="flex items-start justify-between gap-4">
             <div>
-              <p className="font-medium">{order.customerName}</p>
-              <p className="text-xs text-muted-foreground">
-                {order.customerPhone ?? "ohne Telefon"} · {order.fulfilmentType === "delivery" ? "Lieferung" : "Abholung"}
+              <p className="text-lg font-semibold">{order.customerName}</p>
+              <p className="text-sm text-muted-foreground">
+                {order.customerPhone ?? "ohne Telefon"} · {order.fulfilmentType === "delivery" ? "Lieferung" : "Abholung"} · bestellt{" "}
+                {new Date(order.createdAt).toLocaleString("de-CH", { dateStyle: "short", timeStyle: "short", timeZone: "Europe/Zurich" })}
               </p>
             </div>
-            <div className="text-right">
-              <p className="font-numeric font-medium">{order.totalChf}</p>
-              <span className="rounded-sm bg-secondary px-2 py-0.5 text-xs text-muted-foreground">
+            <div className="flex flex-col items-end gap-1.5 text-right">
+              <p className="font-numeric text-lg font-semibold">{order.totalChf}</p>
+              <span className="rounded-sm bg-secondary px-2 py-0.5 text-xs text-secondary-foreground">
                 {statusLabel(order.status, order.fulfilmentType)}
               </span>
             </div>
           </div>
 
-          <ul className="flex flex-col gap-1 text-sm">
+          <ul className="flex flex-col border-y border-border text-sm">
             {order.items.map((item) => (
-              <li key={item.id} className="flex items-center justify-between text-muted-foreground">
+              <li key={item.id} className="flex min-h-10 items-center gap-3 border-b border-border py-1.5 last:border-b-0">
+                <span className="font-numeric w-12 shrink-0 text-right text-muted-foreground">{item.qty} ×</span>
                 <span>{item.nameDe}</span>
-                <span className="font-numeric">× {item.qty}</span>
               </li>
             ))}
           </ul>
@@ -80,7 +81,7 @@ export function OrdersTable({ orders }: { orders: OrderRow[] }) {
 
           <div className="flex flex-wrap items-center gap-2">
             {NEXT_STATUS[order.status] && (
-              <Button type="button" variant="outline" className="h-11 px-4" disabled={pending} onClick={() => advance(order)}>
+              <Button type="button" className="h-11 px-5" disabled={pending} onClick={() => advance(order)}>
                 {nextActionLabel(order.status, order.fulfilmentType)}
               </Button>
             )}
@@ -95,7 +96,7 @@ export function OrdersTable({ orders }: { orders: OrderRow[] }) {
                 </Button>
               </>
             ) : (
-              <Button type="button" variant="ghost" className="h-11 px-4 text-muted-foreground" disabled={pending} onClick={() => setConfirmCancel(order.id)}>
+              <Button type="button" variant="ghost" className="ml-auto h-11 px-4 text-muted-foreground" disabled={pending} onClick={() => setConfirmCancel(order.id)}>
                 Stornieren
               </Button>
             )}

@@ -25,7 +25,7 @@ export function DiscardDialog({ onSave, onDiscard, onBack }: { onSave: () => voi
         <Button type="button" variant="outline" onClick={onBack}>
           Weiter bearbeiten
         </Button>
-        <Button type="button" className="bg-destructive text-white hover:bg-destructive/90" onClick={onDiscard}>
+        <Button type="button" className="bg-destructive text-destructive-foreground hover:bg-destructive/90" onClick={onDiscard}>
           Verwerfen
         </Button>
         <Button type="button" autoFocus onClick={onSave}>

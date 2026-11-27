@@ -1,5 +1,6 @@
 import { prisma } from "@/lib/prisma";
 import { formatChf } from "@/lib/pricing";
+import { EmptyState, PageHeader, pageClass } from "@/components/page";
 import { OrdersTable } from "./orders-table";
 
 // Online-Bestellungen werden per Hintergrund-Sync importiert (lib/sync/orders.ts),
@@ -15,12 +16,16 @@ export default async function OrdersPage() {
   });
 
   return (
-    <div className="mx-auto flex w-full max-w-4xl flex-col gap-6 px-4 py-10">
-      <h1 className="text-xl font-semibold">
-        Online-Bestellungen <span className="font-numeric text-muted-foreground">({orders.length})</span>
-      </h1>
+    <main className={pageClass()}>
+      <PageHeader
+        title="Online-Bestellungen"
+        count={orders.length}
+        description="Offene Bestellungen aus dem Webshop, älteste zuerst."
+      />
       {orders.length === 0 ? (
-        <p className="text-sm text-muted-foreground">Keine offenen Bestellungen.</p>
+        <EmptyState title="Keine offenen Bestellungen.">
+          Neue Bestellungen aus dem Webshop erscheinen hier automatisch, sobald die App mit dem Internet verbunden ist.
+        </EmptyState>
       ) : (
         <OrdersTable
           orders={orders.map((order) => ({
@@ -36,6 +41,6 @@ export default async function OrdersPage() {
           }))}
         />
       )}
-    </div>
+    </main>
   );
 }
